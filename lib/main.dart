@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screens/log_waste_screen.dart';
+import 'screens/compost_tips_screen.dart';
 
 void main() {
   runApp(const ScraPekanApp());
@@ -20,7 +21,8 @@ class ScraPekanApp extends StatelessWidget {
           bodyMedium: TextStyle(color: Color(0xFF383838)),
         ),
       ),
-      home: const HomePage(), // temporary
+      //home: const HomePage(),
+      home: const CompostTipsScreen(), // temporary
     );
   }
 }
