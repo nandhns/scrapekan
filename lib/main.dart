@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'screens/log_waste_screen.dart';
 
 void main() {
   runApp(const ScraPekanApp());
@@ -31,7 +32,17 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("ScraPekan")),
-      body: const Center(child: Text("Hello, ScraPekan!")),
+      body: Center(
+        child: ElevatedButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const LogWasteScreen()),
+            );
+          },
+          child: const Text("Log My Waste"),
+        ),
+      ),
     );
   }
 }
