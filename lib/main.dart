@@ -37,7 +37,7 @@ class HomePage extends StatelessWidget {
           onPressed: () {
             Navigator.push(
               context,
-              //MaterialPageRoute(builder: (context) => const LogWasteScreen()),
+              MaterialPageRoute(builder: (context) => const LogWasteScreen()),
             );
           },
           child: const Text("Log My Waste"),
