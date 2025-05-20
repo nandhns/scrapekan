@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'screens/log_waste_screen.dart';
 import 'screens/compost_tips_screen.dart';
 
+import 'screens/rewards_screen.dart';
+
 void main() {
   runApp(const ScraPekanApp());
 }
@@ -22,7 +24,7 @@ class ScraPekanApp extends StatelessWidget {
         ),
       ),
       //home: const HomePage(),
-      home: const CompostTipsScreen(), // temporary
+      home: const RewardsScreen(), // temporary
     );
   }
 }
