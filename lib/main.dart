@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'home_page.dart';
 
 void main() {
   runApp(const ScraPekanApp());
@@ -22,6 +21,28 @@ class ScraPekanApp extends StatelessWidget {
         ),
       ),
       home: const HomePage(),
+    );
+  }
+}
+
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("ScraPekan")),
+      body: Center(
+        child: ElevatedButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              //MaterialPageRoute(builder: (context) => const LogWasteScreen()),
+            );
+          },
+          child: const Text("Log My Waste"),
+        ),
+      ),
     );
   }
 }
