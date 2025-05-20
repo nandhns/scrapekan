@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'screens/log_waste_screen.dart';
+import 'screens/compost_tips_screen.dart';
 
 void main() {
   runApp(const ScraPekanApp());
@@ -19,7 +21,8 @@ class ScraPekanApp extends StatelessWidget {
           bodyMedium: TextStyle(color: Color(0xFF383838)),
         ),
       ),
-      home: const HomePage(), // temporary
+      //home: const HomePage(),
+      home: const CompostTipsScreen(), // temporary
     );
   }
 }
@@ -31,7 +34,17 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("ScraPekan")),
-      body: const Center(child: Text("Hello, ScraPekan!")),
+      body: Center(
+        child: ElevatedButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const LogWasteScreen()),
+            );
+          },
+          child: const Text("Log My Waste"),
+        ),
+      ),
     );
   }
 }
