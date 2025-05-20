@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'screens/log_waste_screen.dart';
+import 'screens/compost_tips_screen.dart';
+
+import 'screens/rewards_screen.dart';
 
 void main() {
   runApp(const ScraPekanApp());
