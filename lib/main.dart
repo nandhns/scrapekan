@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'screens/log_waste_screen.dart';
 import 'screens/compost_tips_screen.dart';
+import 'screens/delivery_management_screen.dart';
 import 'screens/farmer_notifications_screen.dart';
+
 
 import 'screens/rewards_screen.dart';
 
@@ -25,7 +27,7 @@ class ScraPekanApp extends StatelessWidget {
         ),
       ),
       //home: const HomePage(),
-      home: const RewardsScreen(), // temporary
+      home: const DeliveryManagementScreen(), // temporary
     );
   }
 }
