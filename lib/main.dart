@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/log_waste_screen.dart';
 import 'screens/compost_tips_screen.dart';
-
+import 'screens/home_map.dart';
 import 'screens/rewards_screen.dart';
 
 void main() {
@@ -24,11 +24,13 @@ class ScraPekanApp extends StatelessWidget {
           bodyMedium: TextStyle(color: Color(0xFF383838)),
         ),
       ),
-      home: const HomePage(),
+      //home: const HomePage(),
+      home: HomeMap(),
     );
   }
 }
 
+/**
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -49,4 +51,6 @@ class HomePage extends StatelessWidget {
       ),
     );
   }
-}
+} 
+*/
+
