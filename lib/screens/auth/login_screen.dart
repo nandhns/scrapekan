@@ -33,7 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  'Welcome to ScrapeKan',
+                  'Welcome to ScraPekan',
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
                 SizedBox(height: 32),
