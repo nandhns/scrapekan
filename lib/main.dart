@@ -1,31 +1,36 @@
 import 'package:flutter/material.dart';
-import 'screens/log_waste_screen.dart';
-import 'screens/compost_tips_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:provider/provider.dart';
+import 'firebase_options.dart';
 import 'screens/home_map.dart';
-import 'screens/rewards_screen.dart';
+import 'services/auth_service.dart';
+import 'screens/auth/login_screen.dart';
 
-void main() {
-  runApp(const ScraPekanApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  runApp(MyApp());
 }
 
-class ScraPekanApp extends StatelessWidget {
-  const ScraPekanApp({super.key});
-
+class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'ScraPekan',
-      theme: ThemeData(
-        scaffoldBackgroundColor: Colors.white,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFEFBF04)),
-        useMaterial3: true,
-        textTheme: const TextTheme(
-          bodyMedium: TextStyle(color: Color(0xFF383838)),
+    return MultiProvider(
+      providers: [
+        Provider<AuthService>(
+          create: (_) => AuthService(),
         ),
+      ],
+      child: MaterialApp(
+        title: 'ScrapeKan',
+        theme: ThemeData(
+          primarySwatch: Colors.green,
+          visualDensity: VisualDensity.adaptivePlatformDensity,
+        ),
+        home: LoginScreen(),
       ),
-      //home: const HomePage(),
-      home: HomeMap(),
     );
   }
 }
