@@ -83,3 +83,4 @@ app.*.map.json
 .env
 .env.local
 *.env
+android/app/google-services.json
