@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:qr_code_scanner/qr_code_scanner.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
@@ -10,13 +12,11 @@ class LogWasteScreen extends StatefulWidget {
 }
 
 class _LogWasteScreenState extends State<LogWasteScreen> {
-  final GlobalKey qrKey = GlobalKey(debugLabel: 'QR');
-  QRViewController? controller;
-  String? scannedCode;
-  bool isScanning = true;
-  final _formKey = GlobalKey<FormState>();
   final _weightController = TextEditingController();
-  String _selectedWasteType = 'food';
+  String? _selectedWasteType;
+  bool _isScanning = false;
+  late final MobileScannerController _scannerController;
+  final _formKey = GlobalKey<FormState>();
   bool _isSubmitting = false;
 
   final List<Map<String, String>> _wasteTypes = [
@@ -27,121 +27,204 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _scannerController = MobileScannerController(
+      facing: CameraFacing.back,
+      torchEnabled: false,
+      formats: [BarcodeFormat.qrCode],
+    );
+  }
+
+  @override
+  void dispose() {
+    _weightController.dispose();
+    _scannerController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Log Waste'),
-        actions: [
-          if (!isScanning)
-            IconButton(
-              icon: Icon(Icons.qr_code_scanner),
-              onPressed: () => setState(() => isScanning = true),
-            ),
-        ],
-      ),
-      body: isScanning ? _buildQRScanner() : _buildWasteForm(),
-    );
-  }
-
-  Widget _buildQRScanner() {
-    return Column(
-      children: [
-        Expanded(
-          flex: 5,
-          child: QRView(
-            key: qrKey,
-            onQRViewCreated: _onQRViewCreated,
+    return Padding(
+      padding: EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Log Your Waste',
+            style: Theme.of(context).textTheme.headlineMedium,
           ),
-        ),
-        Expanded(
-          flex: 1,
-          child: Center(
-            child: Text(
-              'Scan QR Code on Composting Machine',
-              style: TextStyle(fontSize: 16),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildWasteForm() {
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(16),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Machine ID: ${scannedCode ?? "Unknown"}',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 24),
-            DropdownButtonFormField<String>(
-              value: _selectedWasteType,
-              decoration: InputDecoration(
-                labelText: 'Waste Type',
-                border: OutlineInputBorder(),
-              ),
-              items: _wasteTypes.map((type) {
-                return DropdownMenuItem(
-                  value: type['value'],
-                  child: Text(type['label']!),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedWasteType = value!;
-                });
-              },
-            ),
-            SizedBox(height: 16),
-            TextFormField(
-              controller: _weightController,
-              decoration: InputDecoration(
-                labelText: 'Weight (kg)',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.number,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter the weight';
-                }
-                if (double.tryParse(value) == null) {
-                  return 'Please enter a valid number';
-                }
-                return null;
-              },
-            ),
-            SizedBox(height: 24),
-            _isSubmitting
-                ? Center(child: CircularProgressIndicator())
-                : ElevatedButton(
-                    onPressed: _submitWasteLog,
-                    child: Text('Submit'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: Size(double.infinity, 50),
+          SizedBox(height: 24),
+          if (_isScanning) ...[
+            Expanded(
+              child: Column(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: MobileScanner(
+                        controller: _scannerController,
+                        onDetect: (capture) {
+                          final List<Barcode> barcodes = capture.barcodes;
+                          for (final barcode in barcodes) {
+                            _handleQRCode(barcode.rawValue ?? '');
+                          }
+                        },
+                        errorBuilder: (context, error, child) {
+                          return Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.error, color: Colors.red, size: 48),
+                                SizedBox(height: 16),
+                                Text(
+                                  'Camera error: ${error.errorCode}',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                                SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: () => setState(() => _isScanning = false),
+                                  child: Text('Go Back'),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                     ),
                   ),
+                  SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          setState(() => _isScanning = false);
+                        },
+                        icon: Icon(Icons.close),
+                        label: Text('Cancel'),
+                      ),
+                      if (!kIsWeb && (Platform.isAndroid || Platform.isIOS))
+                        ElevatedButton.icon(
+                          onPressed: () => _scannerController.toggleTorch(),
+                          icon: Icon(Icons.flash_on),
+                          label: Text('Toggle Flash'),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            Card(
+              child: Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Quick Log',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    SizedBox(height: 16),
+                    TextField(
+                      controller: _weightController,
+                      decoration: InputDecoration(
+                        labelText: 'Weight (kg)',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.scale),
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                    SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      decoration: InputDecoration(
+                        labelText: 'Waste Type',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.category),
+                      ),
+                      value: _selectedWasteType,
+                      items: _wasteTypes.map((type) {
+                        return DropdownMenuItem(
+                          value: type['value'],
+                          child: Text(type['label']!),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() => _selectedWasteType = value);
+                      },
+                    ),
+                    SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _handleManualLog,
+                        child: Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: Text('Submit'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(height: 24),
+            Text(
+              'Or scan QR code at collection point',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            SizedBox(height: 16),
+            Center(
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  setState(() => _isScanning = true);
+                },
+                icon: Icon(Icons.qr_code_scanner),
+                label: Text('Scan QR Code'),
+              ),
+            ),
           ],
+        ],
+      ),
+    );
+  }
+
+  void _handleQRCode(String code) {
+    setState(() => _isScanning = false);
+    // TODO: Implement QR code handling
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('QR Code scanned: $code'),
+        action: SnackBarAction(
+          label: 'OK',
+          onPressed: () {},
         ),
       ),
     );
   }
 
-  void _onQRViewCreated(QRViewController controller) {
-    this.controller = controller;
-    controller.scannedDataStream.listen((scanData) {
-      if (scanData.code != null) {
-        setState(() {
-          scannedCode = scanData.code;
-          isScanning = false;
-        });
-        controller.dispose();
-      }
-    });
+  void _handleManualLog() {
+    if (_weightController.text.isEmpty || _selectedWasteType == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Please fill in all fields'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // TODO: Implement waste logging
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Logging waste: ${_weightController.text}kg of $_selectedWasteType'),
+        action: SnackBarAction(
+          label: 'OK',
+          onPressed: () {},
+        ),
+      ),
+    );
   }
 
   Future<void> _submitWasteLog() async {
@@ -158,7 +241,7 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
 
         await FirebaseFirestore.instance.collection('waste_logs').add({
           'userId': user.uid,
-          'machineId': scannedCode,
+          'machineId': _selectedWasteType,
           'wasteType': _selectedWasteType,
           'weight': double.parse(_weightController.text),
           'timestamp': FieldValue.serverTimestamp(),
@@ -167,8 +250,8 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
         // Reset form
         _weightController.clear();
         setState(() {
-          isScanning = true;
-          scannedCode = null;
+          _isScanning = false;
+          _selectedWasteType = null;
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -182,12 +265,5 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
         setState(() => _isSubmitting = false);
       }
     }
-  }
-
-  @override
-  void dispose() {
-    controller?.dispose();
-    _weightController.dispose();
-    super.dispose();
   }
 }

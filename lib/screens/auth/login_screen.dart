@@ -14,6 +14,12 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,15 +37,35 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
                 SizedBox(height: 32),
+                if (_errorMessage != null) ...[
+                  Container(
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red[100],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _errorMessage!,
+                      style: TextStyle(color: Colors.red[900]),
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                ],
                 TextFormField(
                   controller: _emailController,
                   decoration: InputDecoration(
                     labelText: 'Email',
                     border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.email),
                   ),
+                  keyboardType: TextInputType.emailAddress,
+                  enabled: !_isLoading,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'Please enter your email';
+                    }
+                    if (!value.contains('@')) {
+                      return 'Please enter a valid email';
                     }
                     return null;
                   },
@@ -50,18 +76,34 @@ class _LoginScreenState extends State<LoginScreen> {
                   decoration: InputDecoration(
                     labelText: 'Password',
                     border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.lock),
                   ),
                   obscureText: true,
+                  enabled: !_isLoading,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'Please enter your password';
+                    }
+                    if (value.length < 6) {
+                      return 'Password must be at least 6 characters';
                     }
                     return null;
                   },
                 ),
                 SizedBox(height: 24),
-                _isLoading
-                    ? CircularProgressIndicator()
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: _isLoading
+                    ? ElevatedButton(
+                        onPressed: null,
+                        child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Theme.of(context).primaryColor,
+                        ),
+                      )
                     : ElevatedButton(
                         onPressed: _handleLogin,
                         child: Text('Login'),
@@ -69,14 +111,17 @@ class _LoginScreenState extends State<LoginScreen> {
                           minimumSize: Size(double.infinity, 50),
                         ),
                       ),
+                ),
                 SizedBox(height: 16),
                 TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => RegisterScreen()),
-                    );
-                  },
+                  onPressed: _isLoading
+                    ? null
+                    : () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => RegisterScreen()),
+                        );
+                      },
                   child: Text('Don\'t have an account? Register'),
                 ),
               ],
@@ -88,33 +133,47 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true);
-      
-      try {
-        final authService = Provider.of<AuthService>(context, listen: false);
-        final user = await authService.signInWithEmailAndPassword(
-          _emailController.text,
-          _passwordController.text,
-        );
+    if (!mounted) return;
+    
+    setState(() {
+      _errorMessage = null;
+    });
 
-        if (user != null) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => MainScreen()),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Invalid email or password')),
-          );
-        }
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('An error occurred')),
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final user = await authService.signInWithEmailAndPassword(
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
+
+      if (!mounted) return;
+
+      if (user != null) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => MainScreen()),
+          (route) => false,
         );
-      } finally {
-        setState(() => _isLoading = false);
+      } else {
+        setState(() {
+          _errorMessage = 'Invalid email or password';
+          _isLoading = false;
+        });
       }
+    } catch (e) {
+      if (!mounted) return;
+      
+      setState(() {
+        _errorMessage = e.toString().contains('offline') || e.toString().contains('network')
+            ? 'Network error: Please check your internet connection'
+            : e.toString();
+        _isLoading = false;
+      });
     }
   }
 

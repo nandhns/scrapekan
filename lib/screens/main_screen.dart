@@ -14,6 +14,7 @@ import 'admin/fertilizer_logs_screen.dart';
 import 'municipal/admin_dashboard_screen.dart';
 import 'municipal/analytics_screen.dart';
 import 'municipal/machine_monitoring_screen.dart';
+import 'auth/login_screen.dart';
 
 class MainScreen extends StatefulWidget {
   @override
@@ -22,57 +23,131 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
+  bool _isLoading = true;
+  String? _error;
+  UserModel? _userData;
+  late List<Widget> _screens;
+  late List<BottomNavigationBarItem> _navigationItems;
 
   @override
-  Widget build(BuildContext context) {
-    final authService = Provider.of<AuthService>(context);
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final authService = Provider.of<AuthService>(context, listen: false);
     final user = authService.currentUser;
 
     if (user == null) {
-      // Handle not logged in state
+      setState(() {
+        _isLoading = false;
+        _error = 'Please log in';
+      });
+      return;
+    }
+
+    try {
+      final userData = await authService.getUserData(user.uid);
+      if (userData == null) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Error loading user data';
+        });
+        return;
+      }
+
+      setState(() {
+        _userData = userData;
+        _screens = _getScreensForRole(userData.role);
+        _navigationItems = _getNavigationItemsForRole(userData.role);
+        _isLoading = false;
+        _error = null;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _error = 'An error occurred: $e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
       return Scaffold(
         body: Center(
-          child: Text('Please log in'),
+          child: CircularProgressIndicator(),
         ),
       );
     }
 
-    return FutureBuilder<UserModel?>(
-      future: authService.getUserData(user.uid),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
-          );
-        }
-
-        if (!snapshot.hasData) {
-          return Scaffold(
-            body: Center(
-              child: Text('Error loading user data'),
-            ),
-          );
-        }
-
-        final userData = snapshot.data!;
-        final screens = _getScreensForRole(userData.role);
-        final navigationItems = _getNavigationItemsForRole(userData.role);
-
-        return Scaffold(
-          body: IndexedStack(
-            index: _selectedIndex,
-            children: screens,
+    if (_error != null) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(_error!),
+              SizedBox(height: 16),
+              if (_error == 'Please log in')
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (context) => LoginScreen()),
+                    );
+                  },
+                  child: Text('Go to Login'),
+                )
+              else
+                ElevatedButton(
+                  onPressed: _loadUserData,
+                  child: Text('Retry'),
+                ),
+            ],
           ),
-          bottomNavigationBar: BottomNavigationBar(
-            currentIndex: _selectedIndex,
-            onTap: (index) => setState(() => _selectedIndex = index),
-            items: navigationItems,
-            type: BottomNavigationBarType.fixed,
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('ScrapeKan'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.logout),
+            onPressed: () async {
+              try {
+                final authService = Provider.of<AuthService>(context, listen: false);
+                await authService.signOut();
+                if (!context.mounted) return;
+                
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => LoginScreen()),
+                  (route) => false,
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Failed to sign out: $e')),
+                );
+              }
+            },
           ),
-        );
-      },
+        ],
+      ),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _screens,
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (index) => setState(() => _selectedIndex = index),
+        items: _navigationItems,
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: Theme.of(context).primaryColor,
+        unselectedItemColor: Colors.grey,
+      ),
     );
   }
 
@@ -116,28 +191,28 @@ class _MainScreenState extends State<MainScreen> {
       case 'vendor':
         return [
           BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Map'),
-          BottomNavigationBarItem(icon: Icon(Icons.qr_code), label: 'Log Waste'),
+          BottomNavigationBarItem(icon: Icon(Icons.qr_code), label: 'Log'),
           BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
-          BottomNavigationBarItem(icon: Icon(Icons.tips_and_updates), label: 'Tips'),
+          BottomNavigationBarItem(icon: Icon(Icons.eco), label: 'Tips'),
           BottomNavigationBarItem(icon: Icon(Icons.star), label: 'Rewards'),
         ];
       case 'farmer':
         return [
           BottomNavigationBarItem(icon: Icon(Icons.request_page), label: 'Request'),
-          BottomNavigationBarItem(icon: Icon(Icons.inventory), label: 'Stock'),
+          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Stock'),
           BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
         ];
       case 'admin':
         return [
-          BottomNavigationBarItem(icon: Icon(Icons.qr_code_scanner), label: 'Delivery'),
-          BottomNavigationBarItem(icon: Icon(Icons.receipt_long), label: 'Logs'),
+          BottomNavigationBarItem(icon: Icon(Icons.check), label: 'Confirm'),
+          BottomNavigationBarItem(icon: Icon(Icons.list), label: 'Logs'),
           BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
         ];
       case 'municipal':
         return [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
+          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Overview'),
           BottomNavigationBarItem(icon: Icon(Icons.analytics), label: 'Analytics'),
-          BottomNavigationBarItem(icon: Icon(Icons.monitor), label: 'Machines'),
+          BottomNavigationBarItem(icon: Icon(Icons.memory), label: 'Machines'),
         ];
       default:
         return [

@@ -15,7 +15,29 @@ class DeliveryConfirmationScreen extends StatelessWidget {
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  SizedBox(height: 16),
+                  Text(
+                    'Error loading requests',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 8),
+                  Text(snapshot.error.toString()),
+                  SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      // This will trigger a rebuild of the StreamBuilder
+                      (context as Element).markNeedsBuild();
+                    },
+                    child: Text('Retry'),
+                  ),
+                ],
+              ),
+            );
           }
 
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -42,7 +64,10 @@ class DeliveryConfirmationScreen extends StatelessWidget {
             itemCount: requests.length,
             itemBuilder: (context, index) {
               final request = requests[index].data() as Map<String, dynamic>;
-              final timestamp = (request['timestamp'] as Timestamp).toDate();
+              final timestamp = request['timestamp'] as Timestamp?;
+              final dateStr = timestamp != null 
+                  ? DateFormat('dd/MM/yyyy HH:mm').format(timestamp.toDate())
+                  : 'Date not available';
 
               return Card(
                 child: Padding(
@@ -60,28 +85,35 @@ class DeliveryConfirmationScreen extends StatelessWidget {
                               fontSize: 16,
                             ),
                           ),
-                          _buildStatusChip(request['status']),
+                          _buildStatusChip(request['status'] as String? ?? 'unknown'),
                         ],
                       ),
                       SizedBox(height: 8),
                       Text(
-                        'Type: ${request['fertilizerType']}',
+                        'Type: ${request['fertilizerType'] ?? 'Not specified'}',
                         style: TextStyle(fontSize: 16),
                       ),
                       Text(
-                        'Quantity: ${request['quantity']} kg',
+                        'Quantity: ${request['quantity']?.toString() ?? '0'} kg',
                         style: TextStyle(fontSize: 16),
                       ),
                       Text(
-                        'Date: ${DateFormat('dd/MM/yyyy HH:mm').format(timestamp)}',
+                        'Date: $dateStr',
                         style: TextStyle(color: Colors.grey[600]),
                       ),
+                      if (request['farmerName'] != null) ...[
+                        SizedBox(height: 8),
+                        Text(
+                          'Farmer: ${request['farmerName']}',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                      ],
                       SizedBox(height: 16),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           TextButton(
-                            onPressed: () => _rejectDelivery(context, requests[index].id),
+                            onPressed: () => _showRejectDialog(context, requests[index].id),
                             child: Text('Reject'),
                             style: TextButton.styleFrom(
                               foregroundColor: Colors.red,
@@ -89,7 +121,7 @@ class DeliveryConfirmationScreen extends StatelessWidget {
                           ),
                           SizedBox(width: 16),
                           ElevatedButton(
-                            onPressed: () => _confirmDelivery(context, requests[index].id),
+                            onPressed: () => _showConfirmDialog(context, requests[index].id),
                             child: Text('Confirm Delivery'),
                           ),
                         ],
@@ -101,6 +133,55 @@ class DeliveryConfirmationScreen extends StatelessWidget {
             },
           );
         },
+      ),
+    );
+  }
+
+  Future<void> _showConfirmDialog(BuildContext context, String requestId) async {
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Confirm Delivery'),
+        content: Text('Are you sure you want to confirm this delivery?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _confirmDelivery(context, requestId);
+            },
+            child: Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showRejectDialog(BuildContext context, String requestId) async {
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Reject Delivery'),
+        content: Text('Are you sure you want to reject this delivery?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _rejectDelivery(context, requestId);
+            },
+            child: Text('Reject'),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+          ),
+        ],
       ),
     );
   }
