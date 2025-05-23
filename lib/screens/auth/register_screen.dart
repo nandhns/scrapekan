@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
 import '../main_screen.dart';
+import '../../widgets/custom_app_bar.dart';
 
 class RegisterScreen extends StatefulWidget {
   @override
@@ -27,7 +28,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Register')),
+      appBar: CustomAppBar(
+        title: 'Register',
+        showBackButton: true,
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: EdgeInsets.all(16.0),

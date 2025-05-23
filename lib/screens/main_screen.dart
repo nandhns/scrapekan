@@ -15,6 +15,7 @@ import 'municipal/admin_dashboard_screen.dart';
 import 'municipal/analytics_screen.dart';
 import 'municipal/machine_monitoring_screen.dart';
 import 'auth/login_screen.dart';
+import '../widgets/custom_app_bar.dart';
 
 class MainScreen extends StatefulWidget {
   @override
@@ -22,12 +23,13 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _selectedIndex = 0;
+  int _currentIndex = 0;
   bool _isLoading = true;
   String? _error;
   UserModel? _userData;
   late List<Widget> _screens;
   late List<BottomNavigationBarItem> _navigationItems;
+  String _currentTitle = 'ScraPekan';
 
   @override
   void initState() {
@@ -72,6 +74,29 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  void _updateTitle(int index) {
+    final titles = _getTitlesForRole(_userData?.role ?? 'citizen');
+    setState(() {
+      _currentTitle = titles[index];
+    });
+  }
+
+  List<String> _getTitlesForRole(String role) {
+    switch (role) {
+      case 'citizen':
+      case 'vendor':
+        return ['Map', 'Log Waste', 'Dashboard', 'Tips', 'Rewards'];
+      case 'farmer':
+        return ['Fertilizer Request', 'Stock', 'Dashboard'];
+      case 'admin':
+        return ['Delivery Confirmation', 'Logs', 'Dashboard'];
+      case 'municipal':
+        return ['Overview', 'Analytics', 'Machines'];
+      default:
+        return ['Map'];
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -112,41 +137,124 @@ class _MainScreenState extends State<MainScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('ScrapeKan'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.logout),
-            onPressed: () async {
+      appBar: CustomAppBar(title: _currentTitle),
+      drawer: _buildDrawer(),
+      body: Navigator(
+        onGenerateRoute: (settings) {
+          return MaterialPageRoute(
+            builder: (context) => IndexedStack(
+              index: _currentIndex,
+              children: _screens,
+            ),
+          );
+        },
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+            _updateTitle(index);
+          });
+        },
+        items: _navigationItems,
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: Theme.of(context).primaryColor,
+        unselectedItemColor: Colors.grey,
+      ),
+    );
+  }
+
+  Widget _buildDrawer() {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          DrawerHeader(
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Text(
+                  'ScraPekan',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Making recycling easier',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ListTile(
+            leading: Icon(Icons.home),
+            title: Text('Home'),
+            onTap: () {
+              setState(() => _currentIndex = 0);
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.recycling),
+            title: Text('Recycle'),
+            onTap: () {
+              setState(() => _currentIndex = 1);
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.leaderboard),
+            title: Text('Leaderboard'),
+            onTap: () {
+              setState(() => _currentIndex = 2);
+              Navigator.pop(context);
+            },
+          ),
+          Divider(),
+          ListTile(
+            leading: Icon(Icons.info),
+            title: Text('About'),
+            onTap: () {
+              // TODO: Navigate to About screen
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.help),
+            title: Text('Help & Support'),
+            onTap: () {
+              // TODO: Navigate to Help screen
+              Navigator.pop(context);
+            },
+          ),
+          Divider(),
+          ListTile(
+            leading: Icon(Icons.logout),
+            title: Text('Logout'),
+            onTap: () async {
               try {
-                final authService = Provider.of<AuthService>(context, listen: false);
+                final authService = await AuthService.create();
                 await authService.signOut();
-                if (!context.mounted) return;
-                
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => LoginScreen()),
-                  (route) => false,
-                );
+                Navigator.of(context).pushReplacementNamed('/login');
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Failed to sign out: $e')),
+                  SnackBar(content: Text('Error logging out: $e')),
                 );
               }
             },
           ),
         ],
-      ),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _screens,
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) => setState(() => _selectedIndex = index),
-        items: _navigationItems,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: Theme.of(context).primaryColor,
-        unselectedItemColor: Colors.grey,
       ),
     );
   }

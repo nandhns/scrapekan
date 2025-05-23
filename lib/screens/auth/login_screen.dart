@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
 import '../main_screen.dart';
 import 'register_screen.dart';
+import '../../widgets/custom_app_bar.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -24,6 +25,10 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: CustomAppBar(
+        title: 'Login',
+        showBackButton: false,
+      ),
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.all(16.0),
