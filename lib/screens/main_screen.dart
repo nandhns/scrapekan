@@ -246,11 +246,18 @@ class _MainScreenState extends State<MainScreen> {
               try {
                 final authService = await AuthService.create();
                 await authService.signOut();
-                Navigator.of(context).pushReplacementNamed('/login');
+                if (mounted) {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => LoginScreen()),
+                    (route) => false,
+                  );
+                }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Error logging out: $e')),
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error logging out: $e')),
+                  );
+                }
               }
             },
           ),

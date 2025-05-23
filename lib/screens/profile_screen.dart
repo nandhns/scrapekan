@@ -2,8 +2,14 @@ import 'package:flutter/material.dart';
 import '../widgets/custom_app_bar.dart';
 import '../services/auth_service.dart';
 import '../models/user_model.dart';
+import 'auth/login_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
+  @override
+  _ProfileScreenState createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -206,11 +212,18 @@ class ProfileScreen extends StatelessWidget {
             try {
               final authService = await AuthService.create();
               await authService.signOut();
-              Navigator.of(context).pushReplacementNamed('/login');
+              if (mounted) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => LoginScreen()),
+                  (route) => false,
+                );
+              }
             } catch (e) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Error logging out: $e')),
-              );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error logging out: $e')),
+                );
+              }
             }
           },
         ),
