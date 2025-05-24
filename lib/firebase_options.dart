@@ -44,7 +44,6 @@ class DefaultFirebaseOptions {
     projectId: 'scrapekan',
     authDomain: 'scrapekan.firebaseapp.com',
     storageBucket: 'scrapekan.appspot.com',
-    measurementId: 'G-MEASUREMENT_ID',
   );
 
   static const FirebaseOptions android = FirebaseOptions(

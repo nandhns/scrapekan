@@ -93,6 +93,7 @@ class _MachineMonitoringScreenState extends State<MachineMonitoringScreen> {
                                 alert['task'] as String,
                                 alert['schedule'] as String,
                                 _getAlertColor(alert['severity'] as String),
+                                alert['severity'] as String,
                               );
                             },
                           );
