@@ -11,6 +11,7 @@ import 'screens/main_screen.dart';
 import 'services/auth_service.dart';
 import 'services/connectivity_service.dart';
 import 'firebase_options.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,7 +25,14 @@ Future<void> main() async {
     // Platform-specific initialization
     if (kIsWeb) {
       // Web-specific settings
-      FirebaseFirestore.instance.enablePersistence();
+      await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+      await FirebaseFirestore.instance.enablePersistence(
+        const PersistenceSettings(synchronizeTabs: true),
+      ).catchError((e) {
+        print('Error enabling Firestore persistence: $e');
+        // Persistence might already be enabled
+        return;
+      });
     } else {
       // Android-specific settings
       FirebaseFirestore.instance.settings = const Settings(
@@ -164,7 +172,11 @@ class _SplashScreenState extends State<SplashScreen> {
       );
     }
 
-    if (authService.currentUser != null) {
+    // Check auth state with user data
+    final userData = await authService.getCurrentUserWithData();
+    if (!mounted) return;
+
+    if (userData != null) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => MainScreen()),
       );

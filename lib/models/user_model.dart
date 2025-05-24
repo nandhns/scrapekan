@@ -49,13 +49,21 @@ class UserModel {
       email: doc['email'] as String,
       name: doc['name'] as String,
       role: doc['role'] as String,
-      points: doc['points'] as int? ?? 0,
+      points: (doc['points'] as num?)?.toInt() ?? 0,
       totalWaste: (doc['totalWaste'] as num?)?.toDouble() ?? 0.0,
       co2Saved: (doc['co2Saved'] as num?)?.toDouble() ?? 0.0,
-      completedTasks: List<String>.from(doc['completedTasks'] ?? []),
-      achievements: List<String>.from(doc['achievements'] ?? []),
-      createdAt: doc['createdAt'] != null ? (doc['createdAt'] as Timestamp).toDate() : null,
-      updatedAt: doc['updatedAt'] != null ? (doc['updatedAt'] as Timestamp).toDate() : null,
+      completedTasks: doc['completedTasks'] != null
+          ? List<String>.from(doc['completedTasks'] as List<dynamic>)
+          : <String>[],
+      achievements: doc['achievements'] != null
+          ? List<String>.from(doc['achievements'] as List<dynamic>)
+          : <String>[],
+      createdAt: doc['createdAt'] != null
+          ? (doc['createdAt'] as Timestamp).toDate()
+          : null,
+      updatedAt: doc['updatedAt'] != null
+          ? (doc['updatedAt'] as Timestamp).toDate()
+          : null,
     );
   }
 

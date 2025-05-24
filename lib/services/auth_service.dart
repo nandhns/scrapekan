@@ -17,11 +17,54 @@ class AuthService {
   static Future<AuthService> create() async {
     final service = AuthService._();
     service._prefs = await SharedPreferences.getInstance();
+    
+    // Initialize persistence handling
+    final currentUser = service._auth.currentUser;
+    if (currentUser != null) {
+      try {
+        // Try to load user data for persisted auth state
+        await service.getUserData(currentUser.uid);
+      } catch (e) {
+        print('Error loading persisted user data: $e');
+        // If we can't load the user data, sign out
+        await service._auth.signOut();
+      }
+    }
+    
     return service;
+  }
+
+  // Get current user with data
+  Future<UserModel?> getCurrentUserWithData() async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+    
+    try {
+      return await getUserData(user.uid);
+    } catch (e) {
+      print('Error getting current user data: $e');
+      return null;
+    }
   }
 
   // Get current user
   User? get currentUser => _auth.currentUser;
+
+  // Get auth state changes with user data
+  Stream<UserModel?> get userDataChanges {
+    return _auth.authStateChanges().asyncMap((user) async {
+      if (user == null) {
+        _cachedUserData = null;
+        return null;
+      }
+      try {
+        return await getUserData(user.uid);
+      } catch (e) {
+        print('Error in userDataChanges: $e');
+        return null;
+      }
+    });
+  }
 
   // Get auth state changes
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -90,35 +133,68 @@ class AuthService {
 
   // Sign in with email and password
   Future<UserModel?> signInWithEmailAndPassword(String email, String password) async {
+    UserCredential? authResult;
     try {
-      final UserCredential result = await _auth.signInWithEmailAndPassword(
+      // Step 1: Sign in with Firebase Auth
+      authResult = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
       
-      if (result.user == null) {
+      if (authResult.user == null) {
         throw 'Sign in failed: No user returned';
       }
+
+      final uid = authResult.user!.uid;
       
-      // Get user data from Firestore
-      final doc = await _firestore.collection('users').doc(result.user!.uid).get();
+      // Step 2: Get user data from Firestore with retry logic
+      DocumentSnapshot? doc;
+      int retryCount = 0;
+      const maxRetries = 3;
       
-      if (!doc.exists) {
+      while (retryCount < maxRetries) {
+        try {
+          doc = await _firestore.collection('users').doc(uid).get();
+          if (doc.exists) break;
+          retryCount++;
+          if (retryCount < maxRetries) {
+            await Future.delayed(Duration(milliseconds: 500 * retryCount));
+          }
+        } catch (e) {
+          print('Attempt $retryCount to fetch user data failed: $e');
+          retryCount++;
+          if (retryCount >= maxRetries) rethrow;
+          await Future.delayed(Duration(milliseconds: 500 * retryCount));
+        }
+      }
+      
+      if (doc == null || !doc.exists) {
+        // Clean up: Sign out if no profile exists
+        await _auth.signOut();
         throw 'User profile not found';
       }
 
       try {
-        // Convert Firestore data to UserModel
-        final data = Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
-        data['id'] = doc.id; // Add document ID to the data
+        // Step 3: Convert and cache user data atomically
+        final data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id;
         
         // Ensure lists are properly initialized
-        data['completedTasks'] = (data['completedTasks'] as List<dynamic>?)
-            ?.map((e) => e.toString())
-            .toList() ?? [];
-        data['achievements'] = (data['achievements'] as List<dynamic>?)
-            ?.map((e) => e.toString())
-            .toList() ?? [];
+        if (data['completedTasks'] != null) {
+          data['completedTasks'] = (data['completedTasks'] as List<dynamic>)
+              .map((e) => e.toString())
+              .toList();
+        } else {
+          data['completedTasks'] = <String>[];
+        }
+        
+        if (data['achievements'] != null) {
+          data['achievements'] = (data['achievements'] as List<dynamic>)
+              .map((e) => e.toString())
+              .toList();
+        } else {
+          data['achievements'] = <String>[];
+        }
         
         // Ensure numeric fields are properly typed
         data['points'] = (data['points'] as num?)?.toInt() ?? 0;
@@ -126,8 +202,12 @@ class AuthService {
         data['co2Saved'] = (data['co2Saved'] as num?)?.toDouble() ?? 0.0;
         
         final userData = UserModel.fromFirestore(data);
-        _cachedUserData = userData;
-        await _cacheUserData(userData);
+        
+        // Atomic update of both caches
+        await Future.wait([
+          _cacheUserData(userData),
+          Future(() => _cachedUserData = userData),
+        ]);
         
         return userData;
       } catch (e) {
@@ -136,12 +216,20 @@ class AuthService {
       }
     } on FirebaseAuthException catch (e) {
       print('Sign in error: ${e.code} - ${e.message}');
+      // Clean up on auth error
+      if (authResult?.user != null) {
+        await _auth.signOut();
+      }
       if (e.code == 'network-request-failed') {
         throw 'Network error: Please check your internet connection';
       }
       throw e.message ?? 'Sign in failed';
     } catch (e) {
       print('Sign in error: $e');
+      // Clean up on any other error
+      if (authResult?.user != null) {
+        await _auth.signOut();
+      }
       throw 'Sign in failed: $e';
     }
   }
