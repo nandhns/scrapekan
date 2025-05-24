@@ -3,320 +3,246 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 
-class AdminDashboardScreen extends StatelessWidget {
+class AdminDashboardScreen extends StatefulWidget {
+  @override
+  _AdminDashboardScreenState createState() => _AdminDashboardScreenState();
+}
+
+class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Admin Dashboard')),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _SummaryCards(),
-            SizedBox(height: 24),
-            _WasteCollectionChart(),
-            SizedBox(height: 24),
-            _RecentActivities(),
-          ],
+      body: SafeArea(
+        child: SingleChildScrollView(
+          physics: ClampingScrollPhysics(),
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Admin Dashboard',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Dashboard',
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Colors.grey[600],
+                ),
+              ),
+              SizedBox(height: 24),
+              
+              // First Row - Two Boxes
+              Row(
+                children: [
+                  // Left Box - Compost Production
+                  Expanded(
+                    child: _buildStatBox(
+                      title: 'Compost',
+                      value: '1500',
+                      unit: 'kg',
+                      subtitle: 'Total Produced',
+                      icon: Icons.eco,
+                      color: Colors.green,
+                    ),
+                  ),
+                  SizedBox(width: 16),
+                  // Right Box - Contributors
+                  Expanded(
+                    child: _buildStatBox(
+                      title: 'Contributors',
+                      value: '87',
+                      unit: '',
+                      subtitle: 'Active this month',
+                      icon: Icons.people,
+                      color: Colors.blue,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 16),
+              
+              // Second Row - Two Boxes
+              Row(
+                children: [
+                  // Left Box - Deliveries
+                  Expanded(
+                    child: _buildStatBox(
+                      title: 'Deliveries',
+                      value: '12',
+                      unit: '',
+                      subtitle: 'Scheduled this week',
+                      icon: Icons.local_shipping,
+                      color: Colors.orange,
+                    ),
+                  ),
+                  SizedBox(width: 16),
+                  // Right Box - CO2 Saved
+                  Expanded(
+                    child: _buildStatBox(
+                      title: 'CO2 Saved',
+                      value: '750',
+                      unit: 'kg',
+                      subtitle: 'Environment impact',
+                      icon: Icons.cloud_done,
+                      color: Colors.purple,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 24),
+              
+              // Inventory Status
+              Card(
+                elevation: 4,
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Inventory Status',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 16),
+                      _buildInventoryItem(
+                        'General Purpose Compost',
+                        '450',
+                        '500',
+                        'kg',
+                        Colors.green,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
-}
 
-class _SummaryCards extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('waste_collections')
-          .orderBy('timestamp', descending: true)
-          .limit(100)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Text('Error: ${snapshot.error}');
-        }
-
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator());
-        }
-
-        final collections = snapshot.data?.docs ?? [];
-        final stats = _calculateStats(collections);
-
-        return GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 16,
-          crossAxisSpacing: 16,
-          children: [
-            _buildStatCard(
-              'Total Waste',
-              '${stats['totalWaste']?.toStringAsFixed(1) ?? '0.0'} kg',
-              Icons.delete,
-              Colors.red,
-            ),
-            _buildStatCard(
-              'Active Users',
-              stats['activeUsers']?.toString() ?? '0',
-              Icons.people,
-              Colors.blue,
-            ),
-            _buildStatCard(
-              'CO₂ Saved',
-              '${stats['co2Saved']?.toStringAsFixed(1) ?? '0.0'} kg',
-              Icons.eco,
-              Colors.green,
-            ),
-            _buildStatCard(
-              'Efficiency',
-              '${stats['efficiency']?.toStringAsFixed(1) ?? '0.0'}%',
-              Icons.speed,
-              Colors.orange,
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Map<String, double> _calculateStats(List<QueryDocumentSnapshot> collections) {
-    double totalWaste = 0;
-    Set<String> activeUsers = {};
-
-    for (var doc in collections) {
-      final data = doc.data() as Map<String, dynamic>;
-      totalWaste += (data['weight'] as num).toDouble();
-      activeUsers.add(data['userId'] as String);
-    }
-
-    return {
-      'totalWaste': totalWaste,
-      'activeUsers': activeUsers.length.toDouble(),
-      'co2Saved': totalWaste * 2.5,
-      'efficiency': (activeUsers.length / 100) * 100,
-    };
-  }
-
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildStatBox({
+    required String title,
+    required String value,
+    required String unit,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+  }) {
     return Card(
       elevation: 4,
       child: Padding(
         padding: EdgeInsets.all(16),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, size: 48, color: color),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Icon(
+                  icon,
+                  color: color,
+                  size: 24,
+                ),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(width: 4),
+                Text(
+                  unit,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
             SizedBox(height: 8),
             Text(
-              title,
+              subtitle,
               style: TextStyle(
-                fontSize: 14,
                 color: Colors.grey[600],
+                fontSize: 14,
               ),
-              textAlign: TextAlign.center,
             ),
-            SizedBox(height: 4),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInventoryItem(
+    String name,
+    String current,
+    String total,
+    String unit,
+    Color color,
+  ) {
+    final progress = double.parse(current) / double.parse(total);
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
             Text(
-              value,
+              name,
               style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: color,
+                fontWeight: FontWeight.w500,
+                fontSize: 16,
               ),
-              textAlign: TextAlign.center,
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _WasteCollectionChart extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
             Text(
-              'Waste Collection Trend',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            SizedBox(height: 16),
-            SizedBox(
-              height: 300,
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('waste_collections')
-                    .orderBy('timestamp', descending: true)
-                    .limit(30)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
-                  }
-
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return Center(child: CircularProgressIndicator());
-                  }
-
-                  final collections = snapshot.data?.docs ?? [];
-                  final data = _processChartData(collections);
-
-                  return data.spots.isEmpty
-                      ? Center(child: Text('No data available'))
-                      : LineChart(
-                          LineChartData(
-                            gridData: FlGridData(show: true),
-                            titlesData: FlTitlesData(
-                              leftTitles: AxisTitles(
-                                sideTitles: SideTitles(
-                                  showTitles: true,
-                                  reservedSize: 40,
-                                ),
-                              ),
-                              bottomTitles: AxisTitles(
-                                sideTitles: SideTitles(
-                                  showTitles: true,
-                                  getTitlesWidget: (value, meta) {
-                                    if (value.toInt() >= 0 && value.toInt() < data.labels.length) {
-                                      return Text(
-                                        data.labels[value.toInt()],
-                                        style: TextStyle(fontSize: 10),
-                                      );
-                                    }
-                                    return Text('');
-                                  },
-                                  reservedSize: 30,
-                                ),
-                              ),
-                            ),
-                            borderData: FlBorderData(show: true),
-                            lineBarsData: [
-                              LineChartBarData(
-                                spots: data.spots,
-                                isCurved: true,
-                                color: Theme.of(context).primaryColor,
-                                barWidth: 3,
-                                isStrokeCapRound: true,
-                                dotData: FlDotData(show: true),
-                                belowBarData: BarAreaData(
-                                  show: true,
-                                  color: Theme.of(context).primaryColor.withOpacity(0.2),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                },
+              '$current/$total $unit',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 14,
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  ChartData _processChartData(List<QueryDocumentSnapshot> collections) {
-    Map<String, double> dailyData = {};
-
-    for (var doc in collections.reversed) {
-      final data = doc.data() as Map<String, dynamic>;
-      final date = (data['timestamp'] as Timestamp).toDate();
-      final dateStr = '${date.day}/${date.month}';
-      final weight = (data['weight'] as num).toDouble();
-
-      dailyData[dateStr] = (dailyData[dateStr] ?? 0) + weight;
-    }
-
-    final sortedEntries = dailyData.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-
-    return ChartData(
-      spots: List.generate(
-        sortedEntries.length,
-        (index) => FlSpot(index.toDouble(), sortedEntries[index].value),
-      ),
-      labels: sortedEntries.map((e) => e.key).toList(),
-    );
-  }
-}
-
-class ChartData {
-  final List<FlSpot> spots;
-  final List<String> labels;
-
-  ChartData({required this.spots, required this.labels});
-}
-
-class _RecentActivities extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Recent Activities',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            SizedBox(height: 16),
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('waste_collections')
-                  .orderBy('timestamp', descending: true)
-                  .limit(5)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Text('Error: ${snapshot.error}');
-                }
-
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return Center(child: CircularProgressIndicator());
-                }
-
-                final activities = snapshot.data?.docs ?? [];
-
-                return Column(
-                  children: activities.map((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    final timestamp = data['timestamp'] as Timestamp;
-                    final date = timestamp.toDate();
-
-                    return ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: Theme.of(context).primaryColor,
-                        child: Icon(Icons.recycling, color: Colors.white),
-                      ),
-                      title: Text(
-                        'Waste Collection: ${data['weight']} kg',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Text(
-                        'Location: ${data['location'] ?? 'Unknown'}\n'
-                        'Date: ${DateFormat('dd/MM/yyyy HH:mm').format(date)}',
-                      ),
-                      isThreeLine: true,
-                    );
-                  }).toList(),
-                );
-              },
-            ),
-          ],
+        SizedBox(height: 8),
+        LinearProgressIndicator(
+          value: progress,
+          backgroundColor: Colors.grey[200],
+          valueColor: AlwaysStoppedAnimation<Color>(color),
+          borderRadius: BorderRadius.circular(4),
+          minHeight: 8,
         ),
-      ),
+      ],
     );
   }
 } 

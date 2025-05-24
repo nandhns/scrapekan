@@ -4,12 +4,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:google_fonts/google_fonts.dart';
 import 'screens/home_map.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_screen.dart';
 import 'services/auth_service.dart';
 import 'services/connectivity_service.dart';
 import 'firebase_options.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,7 +25,14 @@ Future<void> main() async {
     // Platform-specific initialization
     if (kIsWeb) {
       // Web-specific settings
-      FirebaseFirestore.instance.enablePersistence();
+      await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+      await FirebaseFirestore.instance.enablePersistence(
+        const PersistenceSettings(synchronizeTabs: true),
+      ).catchError((e) {
+        print('Error enabling Firestore persistence: $e');
+        // Persistence might already be enabled
+        return;
+      });
     } else {
       // Android-specific settings
       FirebaseFirestore.instance.settings = const Settings(
@@ -100,6 +109,30 @@ class MyApp extends StatelessWidget {
         theme: ThemeData(
           primarySwatch: Colors.green,
           visualDensity: VisualDensity.adaptivePlatformDensity,
+          textTheme: GoogleFonts.notoSansTextTheme(
+            Theme.of(context).textTheme,
+          ).copyWith(
+            // Ensure symbols are covered
+            bodyMedium: TextStyle(
+              fontFamilyFallback: [
+                'Noto Sans Symbols',
+                'Noto Sans Symbols 2',
+              ],
+            ),
+            bodyLarge: TextStyle(
+              fontFamilyFallback: [
+                'Noto Sans Symbols',
+                'Noto Sans Symbols 2',
+              ],
+            ),
+            bodySmall: TextStyle(
+              fontFamilyFallback: [
+                'Noto Sans Symbols',
+                'Noto Sans Symbols 2',
+              ],
+            ),
+          ),
+          fontFamily: GoogleFonts.notoSans().fontFamily,
         ),
         home: SplashScreen(),
       ),
@@ -139,7 +172,11 @@ class _SplashScreenState extends State<SplashScreen> {
       );
     }
 
-    if (authService.currentUser != null) {
+    // Check auth state with user data
+    final userData = await authService.getCurrentUserWithData();
+    if (!mounted) return;
+
+    if (userData != null) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => MainScreen()),
       );

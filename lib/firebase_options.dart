@@ -43,8 +43,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '944281165543',
     projectId: 'scrapekan',
     authDomain: 'scrapekan.firebaseapp.com',
-    storageBucket: 'scrapekan.appspot.com',
-    measurementId: 'G-MEASUREMENT_ID',
+    storageBucket: 'scrapekan.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
@@ -52,6 +51,6 @@ class DefaultFirebaseOptions {
     appId: '1:944281165543:android:1bb2b4a37b1c447ffc4c42',
     messagingSenderId: '944281165543',
     projectId: 'scrapekan',
-    storageBucket: 'scrapekan.appspot.com',
+    storageBucket: 'scrapekan.firebasestorage.app',
   );
 } 

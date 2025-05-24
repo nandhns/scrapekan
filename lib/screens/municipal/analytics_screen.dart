@@ -9,308 +9,390 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
-  String _selectedPeriod = 'week';
-  String _selectedMetric = 'waste';
+  String _selectedPeriod = 'month';
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Analytics')),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildFilters(),
-            SizedBox(height: 24),
-            _buildChart(),
-            SizedBox(height: 24),
-            _buildMetricsGrid(),
-            SizedBox(height: 24),
-            _buildTopPerformers(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilters() {
-    return Card(
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Filters',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            SizedBox(height: 16),
-            Row(
+      body: SafeArea(
+        child: SingleChildScrollView(
+          physics: ClampingScrollPhysics(),
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedPeriod,
-                    decoration: InputDecoration(
-                      labelText: 'Time Period',
-                      border: OutlineInputBorder(),
+                // Header Section with Period Selector
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isWide = constraints.maxWidth > 600;
+                    return isWide
+                      ? Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _buildHeader(),
+                            _buildPeriodSelector(),
+                          ],
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildHeader(),
+                            SizedBox(height: 16),
+                            _buildPeriodSelector(),
+                          ],
+                        );
+                  },
+                ),
+                SizedBox(height: 24),
+                
+                // Compost Demand by Region
+                Card(
+                  elevation: 4,
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.location_on, color: Theme.of(context).primaryColor),
+                            SizedBox(width: 12),
+                            Text(
+                              'Compost Demand by Region',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 24),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            return constraints.maxWidth > 600
+                                ? Row(
+                                    children: [
+                                      Expanded(
+                                        child: _buildDemandCard(
+                                          context,
+                                          'Highest Demand',
+                                          'Taman Melati',
+                                          '35%',
+                                          'of total requests',
+                                          Colors.orange,
+                                        ),
+                                      ),
+                                      SizedBox(width: 16),
+                                      Expanded(
+                                        child: _buildDemandCard(
+                                          context,
+                                          'Growing Region',
+                                          'Wangsa Maju',
+                                          '+22%',
+                                          'increase in requests',
+                                          Colors.green,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Column(
+                                    children: [
+                                      _buildDemandCard(
+                                        context,
+                                        'Highest Demand',
+                                        'Taman Melati',
+                                        '35%',
+                                        'of total requests',
+                                        Colors.orange,
+                                      ),
+                                      SizedBox(height: 16),
+                                      _buildDemandCard(
+                                        context,
+                                        'Growing Region',
+                                        'Wangsa Maju',
+                                        '+22%',
+                                        'increase in requests',
+                                        Colors.green,
+                                      ),
+                                    ],
+                                  );
+                          },
+                        ),
+                      ],
                     ),
-                    items: [
-                      DropdownMenuItem(value: 'week', child: Text('Week')),
-                      DropdownMenuItem(value: 'month', child: Text('Month')),
-                      DropdownMenuItem(value: 'year', child: Text('Year')),
-                    ],
-                    onChanged: (value) {
-                      setState(() => _selectedPeriod = value!);
-                    },
                   ),
                 ),
-                SizedBox(width: 16),
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedMetric,
-                    decoration: InputDecoration(
-                      labelText: 'Metric',
-                      border: OutlineInputBorder(),
+                SizedBox(height: 24),
+                
+                // Usage Trends
+                Card(
+                  elevation: 4,
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.trending_up, color: Theme.of(context).primaryColor),
+                            SizedBox(width: 12),
+                            Text(
+                              'Usage Trends',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 24),
+                        Container(
+                          height: 300,
+                          child: StreamBuilder<QuerySnapshot>(
+                            stream: FirebaseFirestore.instance
+                                .collection('fertilizer_requests')
+                                .orderBy('timestamp', descending: true)
+                                .limit(30)
+                                .snapshots(),
+                            builder: (context, snapshot) {
+                              if (snapshot.hasError) {
+                                return Center(child: Text('Error loading data'));
+                              }
+
+                              if (snapshot.connectionState == ConnectionState.waiting) {
+                                return Center(child: CircularProgressIndicator());
+                              }
+
+                              final requests = snapshot.data?.docs ?? [];
+                              final data = _processUsageData(requests);
+
+                              return Column(
+                                children: [
+                                  Expanded(
+                                    child: LineChart(
+                                      LineChartData(
+                                        gridData: FlGridData(show: true),
+                                        titlesData: FlTitlesData(
+                                          leftTitles: AxisTitles(
+                                            sideTitles: SideTitles(
+                                              showTitles: true,
+                                              reservedSize: 40,
+                                            ),
+                                          ),
+                                          bottomTitles: AxisTitles(
+                                            sideTitles: SideTitles(
+                                              showTitles: true,
+                                              getTitlesWidget: (value, meta) {
+                                                if (value.toInt() >= 0 && value.toInt() < data.labels.length) {
+                                                  return Padding(
+                                                    padding: EdgeInsets.only(top: 8),
+                                                    child: Text(
+                                                      data.labels[value.toInt()],
+                                                      style: TextStyle(fontSize: 10),
+                                                    ),
+                                                  );
+                                                }
+                                                return Text('');
+                                              },
+                                              reservedSize: 30,
+                                            ),
+                                          ),
+                                        ),
+                                        borderData: FlBorderData(show: true),
+                                        lineBarsData: [
+                                          LineChartBarData(
+                                            spots: data.spots,
+                                            isCurved: true,
+                                            color: Theme.of(context).primaryColor,
+                                            barWidth: 3,
+                                            isStrokeCapRound: true,
+                                            dotData: FlDotData(show: false),
+                                            belowBarData: BarAreaData(
+                                              show: true,
+                                              color: Theme.of(context).primaryColor.withOpacity(0.1),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(height: 16),
+                                  Container(
+                                    padding: EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[100],
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          'Average Request: ',
+                                          style: TextStyle(
+                                            color: Colors.grey[700],
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        Text(
+                                          '35kg',
+                                          style: TextStyle(
+                                            color: Theme.of(context).primaryColor,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        Text(
+                                          ' of General Compost',
+                                          style: TextStyle(
+                                            color: Colors.grey[700],
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ),
-                    items: [
-                      DropdownMenuItem(value: 'waste', child: Text('Waste')),
-                      DropdownMenuItem(value: 'co2', child: Text('CO₂ Saved')),
-                      DropdownMenuItem(value: 'users', child: Text('Users')),
-                    ],
-                    onChanged: (value) {
-                      setState(() => _selectedMetric = value!);
-                    },
                   ),
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildChart() {
-    return Card(
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Trend Analysis',
-              style: Theme.of(context).textTheme.titleMedium,
+  Widget _buildHeader() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Analytics',
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        SizedBox(height: 8),
+        Text(
+          'Compost demand and usage trends',
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPeriodSelector() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        DropdownButton<String>(
+          value: _selectedPeriod,
+          items: [
+            DropdownMenuItem(value: 'week', child: Text('This Week')),
+            DropdownMenuItem(value: 'month', child: Text('This Month')),
+            DropdownMenuItem(value: 'quarter', child: Text('This Quarter')),
+            DropdownMenuItem(value: 'year', child: Text('This Year')),
+          ],
+          onChanged: (value) {
+            setState(() {
+              _selectedPeriod = value!;
+            });
+          },
+        ),
+        SizedBox(width: 16),
+        ElevatedButton.icon(
+          onPressed: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Exporting analytics...')),
+            );
+          },
+          icon: Icon(Icons.download),
+          label: Text('Export'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Theme.of(context).primaryColor,
+            foregroundColor: Colors.white,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDemandCard(
+    BuildContext context,
+    String title,
+    String location,
+    String value,
+    String subtitle,
+    Color color,
+  ) {
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w500,
+              fontSize: 14,
             ),
-            SizedBox(height: 16),
-            SizedBox(
-              height: 300,
-              child: StreamBuilder<QuerySnapshot>(
-                stream: _getDataStream(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
-                  }
-
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return Center(child: CircularProgressIndicator());
-                  }
-
-                  final data = _processChartData(snapshot.data?.docs ?? []);
-
-                  return data.spots.isEmpty
-                      ? Center(child: Text('No data available'))
-                      : LineChart(
-                          LineChartData(
-                            gridData: FlGridData(show: true),
-                            titlesData: FlTitlesData(
-                              leftTitles: AxisTitles(
-                                sideTitles: SideTitles(
-                                  showTitles: true,
-                                  reservedSize: 40,
-                                ),
-                              ),
-                              bottomTitles: AxisTitles(
-                                sideTitles: SideTitles(
-                                  showTitles: true,
-                                  getTitlesWidget: (value, meta) {
-                                    if (value.toInt() >= 0 && value.toInt() < data.labels.length) {
-                                      return Text(
-                                        data.labels[value.toInt()],
-                                        style: TextStyle(fontSize: 10),
-                                      );
-                                    }
-                                    return Text('');
-                                  },
-                                  reservedSize: 30,
-                                ),
-                              ),
-                            ),
-                            borderData: FlBorderData(show: true),
-                            lineBarsData: [
-                              LineChartBarData(
-                                spots: data.spots,
-                                isCurved: true,
-                                color: Theme.of(context).primaryColor,
-                                barWidth: 3,
-                                isStrokeCapRound: true,
-                                dotData: FlDotData(show: true),
-                                belowBarData: BarAreaData(
-                                  show: true,
-                                  color: Theme.of(context).primaryColor.withOpacity(0.2),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                },
+          ),
+          SizedBox(height: 12),
+          Text(
+            location,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+          SizedBox(height: 4),
+          Row(
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 24,
+                ),
               ),
-            ),
-          ],
-        ),
+              SizedBox(width: 4),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildMetricsGrid() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _getDataStream(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Text('Error: ${snapshot.error}');
-        }
-
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator());
-        }
-
-        final metrics = _calculateMetrics(snapshot.data?.docs ?? []);
-
-        return GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 16,
-          crossAxisSpacing: 16,
-          children: [
-            _buildMetricCard(
-              'Total',
-              metrics['total']?.toStringAsFixed(1) ?? '0.0',
-              Icons.assessment,
-              Colors.blue,
-            ),
-            _buildMetricCard(
-              'Average',
-              metrics['average']?.toStringAsFixed(1) ?? '0.0',
-              Icons.trending_up,
-              Colors.green,
-            ),
-            _buildMetricCard(
-              'Peak',
-              metrics['peak']?.toStringAsFixed(1) ?? '0.0',
-              Icons.arrow_upward,
-              Colors.orange,
-            ),
-            _buildMetricCard(
-              'Growth',
-              '${metrics['growth']?.toStringAsFixed(1) ?? '0.0'}%',
-              Icons.show_chart,
-              Colors.purple,
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildTopPerformers() {
-    return Card(
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Top Performers',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            SizedBox(height: 16),
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .orderBy('points', descending: true)
-                  .limit(5)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Text('Error: ${snapshot.error}');
-                }
-
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return Center(child: CircularProgressIndicator());
-                }
-
-                final users = snapshot.data?.docs ?? [];
-
-                return Column(
-                  children: users.map((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    return ListTile(
-                      leading: CircleAvatar(
-                        child: Text(
-                          data['name'][0].toUpperCase(),
-                          style: TextStyle(color: Colors.white),
-                        ),
-                        backgroundColor: Theme.of(context).primaryColor,
-                      ),
-                      title: Text(data['name']),
-                      subtitle: Text('Points: ${data['points']}'),
-                      trailing: Icon(Icons.star, color: Colors.amber),
-                    );
-                  }).toList(),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Stream<QuerySnapshot> _getDataStream() {
-    var query = FirebaseFirestore.instance.collection('waste_collections');
-    
-    DateTime startDate;
-    switch (_selectedPeriod) {
-      case 'week':
-        startDate = DateTime.now().subtract(Duration(days: 7));
-        break;
-      case 'month':
-        startDate = DateTime.now().subtract(Duration(days: 30));
-        break;
-      case 'year':
-        startDate = DateTime.now().subtract(Duration(days: 365));
-        break;
-      default:
-        startDate = DateTime.now().subtract(Duration(days: 7));
-    }
-
-    return query
-        .where('timestamp', isGreaterThan: startDate)
-        .orderBy('timestamp', descending: true)
-        .snapshots();
-  }
-
-  ChartData _processChartData(List<QueryDocumentSnapshot> docs) {
+  ChartData _processUsageData(List<QueryDocumentSnapshot> requests) {
     Map<String, double> dailyData = {};
 
-    for (var doc in docs.reversed) {
+    for (var doc in requests.reversed) {
       final data = doc.data() as Map<String, dynamic>;
       final date = (data['timestamp'] as Timestamp).toDate();
-      final dateStr = '${date.day}/${date.month}';
-      final value = _getMetricValue(data);
+      final dateStr = DateFormat('dd/MM').format(date);
+      final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
 
-      dailyData[dateStr] = (dailyData[dateStr] ?? 0) + value;
+      dailyData[dateStr] = (dailyData[dateStr] ?? 0) + quantity;
     }
 
     final sortedEntries = dailyData.entries.toList()
@@ -322,103 +404,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         (index) => FlSpot(index.toDouble(), sortedEntries[index].value),
       ),
       labels: sortedEntries.map((e) => e.key).toList(),
-    );
-  }
-
-  Map<String, double> _calculateMetrics(List<QueryDocumentSnapshot> docs) {
-    if (docs.isEmpty) {
-      return {
-        'total': 0,
-        'average': 0,
-        'peak': 0,
-        'growth': 0,
-      };
-    }
-
-    double total = 0;
-    double peak = 0;
-    Map<String, double> dailyTotals = {};
-
-    for (var doc in docs) {
-      final data = doc.data() as Map<String, dynamic>;
-      final date = (data['timestamp'] as Timestamp).toDate();
-      final dateStr = '${date.day}/${date.month}';
-      final value = _getMetricValue(data);
-
-      total += value;
-      peak = value > peak ? value : peak;
-      dailyTotals[dateStr] = (dailyTotals[dateStr] ?? 0) + value;
-    }
-
-    final average = total / docs.length;
-    
-    // Calculate growth
-    final values = dailyTotals.values.toList();
-    if (values.length >= 2) {
-      final oldValue = values.first;
-      final newValue = values.last;
-      final growth = oldValue > 0 ? ((newValue - oldValue) / oldValue) * 100 : 0;
-      
-      return {
-        'total': total,
-        'average': average,
-        'peak': peak,
-        'growth': growth.toDouble(),
-      };
-    }
-
-    return {
-      'total': total,
-      'average': average,
-      'peak': peak,
-      'growth': 0,
-    };
-  }
-
-  double _getMetricValue(Map<String, dynamic> data) {
-    switch (_selectedMetric) {
-      case 'waste':
-        return (data['weight'] as num).toDouble();
-      case 'co2':
-        return (data['weight'] as num).toDouble() * 2.5; // Example conversion
-      case 'users':
-        return 1; // Count each entry as one user interaction
-      default:
-        return 0;
-    }
-  }
-
-  Widget _buildMetricCard(String title, String value, IconData icon, Color color) {
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 32, color: color),
-            SizedBox(height: 8),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 4),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

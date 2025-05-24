@@ -19,6 +19,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<FlSpot> _monthlyData = [];
   List<String> _monthLabels = [];
   Stream<QuerySnapshot>? _wasteLogsStream;
+  String _selectedPeriod = 'This Month';
+
+  // Map of location IDs to readable names
+  final Map<String, String> _dropOffLocations = {
+    'loc1': 'Pasar Tani Kekal Pekan',
+    'loc2': 'Pasar Tani Kekal Gambang',
+    'loc3': 'Taman Tas Collection Center',
+    'loc4': 'Bandar Putra Collection Point',
+  };
+
+  String _getTimeAgo(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays}d ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}m ago';
+    } else {
+      return 'Just now';
+    }
+  }
 
   // Add tier thresholds
   final List<Map<String, dynamic>> _climateTiers = [
@@ -51,11 +75,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
 
-    _wasteLogsStream = FirebaseFirestore.instance
-        .collection('waste_logs')
-        .where('userId', isEqualTo: user.uid)
-        .orderBy('timestamp', descending: true)
-        .snapshots();
+    setState(() {
+      _wasteLogsStream = FirebaseFirestore.instance
+          .collection('waste_logs')
+          .where('userId', isEqualTo: user.uid)
+          .orderBy('timestamp', descending: true)
+          .snapshots();
+    });
+  }
+
+  void _updateStreamForPeriod(String period) {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final user = authService.currentUser;
+    
+    if (user == null) return;
+
+    DateTime startDate;
+    final now = DateTime.now();
+
+    switch (period) {
+      case 'week':
+        startDate = now.subtract(Duration(days: 7));
+        break;
+      case 'month':
+        startDate = DateTime(now.year, now.month, 1);
+        break;
+      case 'year':
+        startDate = DateTime(now.year, 1, 1);
+        break;
+      default:
+        startDate = now.subtract(Duration(days: 30));
+    }
+
+    setState(() {
+      _wasteLogsStream = FirebaseFirestore.instance
+          .collection('waste_logs')
+          .where('userId', isEqualTo: user.uid)
+          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate))
+          .orderBy('timestamp', descending: true)
+          .snapshots();
+    });
   }
 
   // Add method to get next tier
@@ -77,96 +136,276 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: EdgeInsets.all(16.0),
+      physics: ClampingScrollPhysics(),
+      padding: EdgeInsets.all(16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Header
           Text(
-            'My Impact',
-            style: Theme.of(context).textTheme.headlineMedium,
+            'My Impact Dashboard',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Track your contribution to sustainability',
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              color: Colors.grey[600],
+            ),
           ),
           SizedBox(height: 24),
+
+          // Period Selector
           Card(
+            elevation: 2,
             child: Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Column(
+              padding: EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _StatCard(
-                        icon: Icons.eco,
-                        value: '${_totalWaste.toStringAsFixed(1)} kg',
-                        label: 'Total Waste',
-                      ),
-                      _StatCard(
-                        icon: Icons.co2,
-                        value: '${_co2Saved.toStringAsFixed(1)} kg',
-                        label: 'CO₂ Saved',
-                      ),
-                      _StatCard(
-                        icon: Icons.star,
-                        value: '150',
-                        label: 'Points',
-                      ),
-                    ],
+                  Text(
+                    'Total Contributions',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  DropdownButton<String>(
+                    value: _selectedPeriod,
+                    items: ['This Month', 'Last Month', 'This Year']
+                        .map((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value),
+                      );
+                    }).toList(),
+                    onChanged: (String? newValue) {
+                      if (newValue != null) {
+                        setState(() {
+                          _selectedPeriod = newValue;
+                        });
+                      }
+                    },
+                    underline: Container(),
+                    style: TextStyle(
+                      color: Theme.of(context).primaryColor,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          SizedBox(height: 24),
-          Text(
-            'Recent Activity',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
           SizedBox(height: 16),
+
+          // Impact Metrics
+          Row(
+            children: [
+              Expanded(
+                child: _buildMetricCard(
+                  'Waste Dropped',
+                  '24',
+                  'kg',
+                  Icons.delete_outline,
+                  Colors.orange,
+                ),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: _buildMetricCard(
+                  'Compost Created',
+                  '8',
+                  'kg',
+                  Icons.eco,
+                  Colors.green,
+                ),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: _buildMetricCard(
+                  'CO2 Saved',
+                  '12',
+                  'kg',
+                  Icons.cloud_done,
+                  Colors.blue,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 24),
+
+          // Recent Activity
           Card(
-            child: ListView.builder(
-              shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
-              itemCount: 5,
-              itemBuilder: (context, index) {
-                return ListTile(
-                  leading: Icon(Icons.recycling),
-                  title: Text('Organic Waste Logged'),
-                  subtitle: Text('2.5 kg • 10 points earned'),
-                  trailing: Text('2h ago'),
-                );
-              },
+            elevation: 2,
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Recent Activity',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  _buildActivityItem(
+                    'Dropped off organic waste',
+                    'Pasar Tani Kekal Pekan',
+                    '3.5 kg',
+                    DateTime.now().subtract(Duration(hours: 2)),
+                  ),
+                  Divider(),
+                  _buildActivityItem(
+                    'Collected compost',
+                    'Taman Tas Collection Center',
+                    '2 kg',
+                    DateTime.now().subtract(Duration(days: 1)),
+                  ),
+                  Divider(),
+                  _buildActivityItem(
+                    'Dropped off organic waste',
+                    'Pasar Tani Kekal Gambang',
+                    '4 kg',
+                    DateTime.now().subtract(Duration(days: 3)),
+                  ),
+                ],
+              ),
             ),
           ),
-          SizedBox(height: 24),
-          Text(
-            'Achievements',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          SizedBox(height: 16),
-          Card(
-            child: Column(
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricCard(
+    String title,
+    String value,
+    String unit,
+    IconData icon,
+    Color color,
+  ) {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                icon,
+                color: color,
+                size: 24,
+              ),
+            ),
+            SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                _AchievementTile(
-                  icon: Icons.eco,
-                  title: 'Green Warrior',
-                  progress: 0.7,
-                  level: 'Level 3',
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-                Divider(),
-                _AchievementTile(
-                  icon: Icons.recycling,
-                  title: 'Recycling Master',
-                  progress: 0.4,
-                  level: 'Level 2',
-                ),
-                Divider(),
-                _AchievementTile(
-                  icon: Icons.nature_people,
-                  title: 'Community Hero',
-                  progress: 0.2,
-                  level: 'Level 1',
+                SizedBox(width: 4),
+                Text(
+                  unit,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
                 ),
               ],
             ),
+            SizedBox(height: 8),
+            Text(
+              title,
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActivityItem(
+    String title,
+    String location,
+    String amount,
+    DateTime time,
+  ) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.eco,
+              color: Colors.green,
+              size: 20,
+            ),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  location,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                amount,
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  color: Colors.green,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                _getTimeAgo(time),
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ),
         ],
       ),
