@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'dart:js' as js;
+import '../config/api_keys.dart';
 
 class HomeMap extends StatefulWidget {
   @override
@@ -81,7 +82,7 @@ class _HomeMapState extends State<HomeMap> {
       if (!js.context.hasProperty('google')) {
         // Load Google Maps JavaScript API
         final script = js.context['document'].callMethod('createElement', ['script']);
-        script['src'] = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyBV7ECMpja47Pu0shoRXUMUAPYY2CSX8n0';
+        script['src'] = 'https://maps.googleapis.com/maps/api/js?key=${ApiKeys.googleMapsApiKey}';
         script['type'] = 'text/javascript';
         js.context['document']['head'].callMethod('appendChild', [script]);
         
