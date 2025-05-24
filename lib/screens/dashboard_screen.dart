@@ -4,6 +4,10 @@ import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../services/auth_service.dart';
+import '../services/waste_service.dart';
+import '../services/notification_service.dart';
+import '../providers/service_provider.dart';
+import '../models/firestore_schema.dart';
 
 class DashboardScreen extends StatefulWidget {
   @override
@@ -11,126 +15,15 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  bool _isLoading = true;
-  bool _hasError = false;
-  String? _errorMessage;
-  double _totalWaste = 0;
-  double _co2Saved = 0;
-  List<FlSpot> _monthlyData = [];
-  List<String> _monthLabels = [];
-  Stream<QuerySnapshot>? _wasteLogsStream;
   String _selectedPeriod = 'This Month';
-
-  // Map of location IDs to readable names
-  final Map<String, String> _dropOffLocations = {
-    'loc1': 'Pasar Tani Kekal Pekan',
-    'loc2': 'Pasar Tani Kekal Gambang',
-    'loc3': 'Taman Tas Collection Center',
-    'loc4': 'Bandar Putra Collection Point',
-  };
-
-  String _getTimeAgo(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-
-    if (difference.inDays > 0) {
-      return '${difference.inDays}d ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m ago';
-    } else {
-      return 'Just now';
-    }
-  }
-
-  // Add tier thresholds
-  final List<Map<String, dynamic>> _climateTiers = [
-    {'name': 'Bronze Climate Champion', 'threshold': 25},
-    {'name': 'Silver Climate Champion', 'threshold': 50},
-    {'name': 'Gold Climate Champion', 'threshold': 100},
-    {'name': 'Platinum Climate Champion', 'threshold': 250},
-    {'name': 'Diamond Climate Champion', 'threshold': 500},
-    {'name': 'Master Climate Champion', 'threshold': 1000},
-    {'name': 'Legendary Climate Champion', 'threshold': 2500},
-    {'name': 'Supreme Climate Champion', 'threshold': 5000},
-  ];
+  late final WasteService _wasteService;
+  late final NotificationService _notificationService;
 
   @override
-  void initState() {
-    super.initState();
-    _initializeStream();
-  }
-
-  void _initializeStream() {
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final user = authService.currentUser;
-
-    if (user == null) {
-      setState(() {
-        _isLoading = false;
-        _hasError = true;
-        _errorMessage = 'User not logged in';
-      });
-      return;
-    }
-
-    setState(() {
-      _wasteLogsStream = FirebaseFirestore.instance
-          .collection('waste_logs')
-          .where('userId', isEqualTo: user.uid)
-          .orderBy('timestamp', descending: true)
-          .snapshots();
-    });
-  }
-
-  void _updateStreamForPeriod(String period) {
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final user = authService.currentUser;
-    
-    if (user == null) return;
-
-    DateTime startDate;
-    final now = DateTime.now();
-
-    switch (period) {
-      case 'week':
-        startDate = now.subtract(Duration(days: 7));
-        break;
-      case 'month':
-        startDate = DateTime(now.year, now.month, 1);
-        break;
-      case 'year':
-        startDate = DateTime(now.year, 1, 1);
-        break;
-      default:
-        startDate = now.subtract(Duration(days: 30));
-    }
-
-    setState(() {
-      _wasteLogsStream = FirebaseFirestore.instance
-          .collection('waste_logs')
-          .where('userId', isEqualTo: user.uid)
-          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate))
-          .orderBy('timestamp', descending: true)
-          .snapshots();
-    });
-  }
-
-  // Add method to get next tier
-  Map<String, dynamic> _getNextClimateTier() {
-    for (var tier in _climateTiers) {
-      if (_co2Saved < tier['threshold']) {
-        return tier;
-      }
-    }
-    // If beyond all tiers, create a dynamic next milestone
-    final lastTier = _climateTiers.last;
-    final multiplier = (_co2Saved / lastTier['threshold']).ceil();
-    return {
-      'name': 'Elite Climate Champion Tier $multiplier',
-      'threshold': lastTier['threshold'] * multiplier
-    };
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _wasteService = ServiceProvider.of(context).wasteService;
+    _notificationService = ServiceProvider.of(context).notificationService;
   }
 
   @override
@@ -141,7 +34,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header
           Text(
             'My Impact Dashboard',
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
@@ -201,38 +93,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
           SizedBox(height: 16),
 
           // Impact Metrics
-          Row(
-            children: [
-              Expanded(
-                child: _buildMetricCard(
-                  'Waste Dropped',
-                  '24',
-                  'kg',
-                  Icons.delete_outline,
-                  Colors.orange,
-                ),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: _buildMetricCard(
-                  'Compost Created',
-                  '8',
-                  'kg',
-                  Icons.eco,
-                  Colors.green,
-                ),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: _buildMetricCard(
-                  'CO2 Saved',
-                  '12',
-                  'kg',
-                  Icons.cloud_done,
-                  Colors.blue,
-                ),
-              ),
-            ],
+          StreamBuilder<List<WasteLog>>(
+            stream: _wasteService.getUserWasteHistory(_wasteService.currentUserId!),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Text('Error: ${snapshot.error}');
+              }
+
+              if (!snapshot.hasData) {
+                return Center(child: CircularProgressIndicator());
+              }
+
+              final logs = snapshot.data!;
+              double totalWaste = 0;
+              double totalCompost = 0;
+              double co2Saved = 0;
+
+              for (var log in logs) {
+                if (log.status == 'verified' || log.status == 'composted') {
+                  totalWaste += log.weight;
+                  if (log.status == 'composted') {
+                    totalCompost += log.weight * 0.3; // Assuming 30% compost yield
+                    co2Saved += log.weight * 0.5; // Assuming 0.5kg CO2 saved per kg waste
+                  }
+                }
+              }
+
+              return Row(
+                children: [
+                  Expanded(
+                    child: _buildMetricCard(
+                      'Waste Dropped',
+                      totalWaste.toStringAsFixed(1),
+                      'kg',
+                      Icons.delete_outline,
+                      Colors.orange,
+                    ),
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: _buildMetricCard(
+                      'Compost Created',
+                      totalCompost.toStringAsFixed(1),
+                      'kg',
+                      Icons.eco,
+                      Colors.green,
+                    ),
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: _buildMetricCard(
+                      'CO2 Saved',
+                      co2Saved.toStringAsFixed(1),
+                      'kg',
+                      Icons.cloud_done,
+                      Colors.blue,
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
           SizedBox(height: 24),
 
@@ -252,25 +172,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                   SizedBox(height: 16),
-                  _buildActivityItem(
-                    'Dropped off organic waste',
-                    'Pasar Tani Kekal Pekan',
-                    '3.5 kg',
-                    DateTime.now().subtract(Duration(hours: 2)),
-                  ),
-                  Divider(),
-                  _buildActivityItem(
-                    'Collected compost',
-                    'Taman Tas Collection Center',
-                    '2 kg',
-                    DateTime.now().subtract(Duration(days: 1)),
-                  ),
-                  Divider(),
-                  _buildActivityItem(
-                    'Dropped off organic waste',
-                    'Pasar Tani Kekal Gambang',
-                    '4 kg',
-                    DateTime.now().subtract(Duration(days: 3)),
+                  StreamBuilder<List<WasteLog>>(
+                    stream: _wasteService.getUserWasteHistory(_wasteService.currentUserId!),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Text('Error: ${snapshot.error}');
+                      }
+
+                      if (!snapshot.hasData) {
+                        return Center(child: CircularProgressIndicator());
+                      }
+
+                      final recentLogs = snapshot.data!.take(3).toList();
+
+                      return Column(
+                        children: recentLogs.map((log) {
+                          return Column(
+                            children: [
+                              _buildActivityItem(
+                                'Dropped off organic waste',
+                                log.dropOffPointId,
+                                '${log.weight} kg',
+                                log.timestamp,
+                              ),
+                              if (recentLogs.last != log) Divider(),
+                            ],
+                          );
+                        }).toList(),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -377,12 +307,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 SizedBox(height: 4),
-                Text(
-                  location,
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 12,
-                  ),
+                FutureBuilder<DocumentSnapshot>(
+                  future: _wasteService.dropoffPointsRef.doc(location).get(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return Text(location);
+                    }
+                    final data = snapshot.data!.data() as Map<String, dynamic>;
+                    return Text(
+                      data['name'] ?? location,
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 12,
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -412,33 +351,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _processWasteLogs(List<QueryDocumentSnapshot> wasteLogs) {
-    double totalWaste = 0;
-    Map<String, double> monthlyWaste = {};
+  String _getTimeAgo(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
 
-    for (var doc in wasteLogs) {
-      final data = doc.data() as Map<String, dynamic>;
-      final weight = (data['weight'] as num).toDouble();
-      final timestamp = (data['timestamp'] as Timestamp).toDate();
-      final monthKey = DateFormat('MMM yyyy').format(timestamp);
-
-      totalWaste += weight;
-      monthlyWaste[monthKey] = (monthlyWaste[monthKey] ?? 0) + weight;
+    if (difference.inDays > 0) {
+      return '${difference.inDays}d ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}m ago';
+    } else {
+      return 'Just now';
     }
-
-    final sortedEntries = monthlyWaste.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-
-    setState(() {
-      _totalWaste = totalWaste;
-      _co2Saved = totalWaste * 2.5;
-      _monthlyData = List.generate(
-        sortedEntries.length,
-        (index) => FlSpot(index.toDouble(), sortedEntries[index].value),
-      );
-      _monthLabels = sortedEntries.map((e) => e.key).toList();
-      _isLoading = false;
-    });
   }
 }
 

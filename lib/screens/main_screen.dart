@@ -2,22 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../models/user_model.dart';
-import 'home_map.dart';
-import 'log_waste_screen.dart';
-import 'dashboard_screen.dart';
-import 'compost_tips_screen.dart';
-import 'rewards_screen.dart';
+import 'auth/login_screen.dart';
+// Citizen screens
+import 'citizen/home_map_screen.dart';
+import 'citizen/log_waste_screen.dart';
+import 'citizen/dashboard_screen.dart';
+import 'citizen/tips_screen.dart';
+import 'citizen/rewards_screen.dart';
+// Farmer screens
 import 'farmer/fertilizer_request_screen.dart';
 import 'farmer/fertilizer_stock_screen.dart';
 import 'farmer/farmer_notifications_screen.dart';
+// Admin screens
 import 'admin/delivery_confirmation_screen.dart';
 import 'admin/fertilizer_logs_screen.dart';
 import 'admin/farmer_requests_screen.dart';
+// Municipal screens
 import 'municipal/admin_dashboard_screen.dart';
 import 'municipal/analytics_screen.dart';
 import 'municipal/machine_monitoring_screen.dart';
-import 'auth/login_screen.dart';
-import '../widgets/custom_app_bar.dart';
 
 class MainScreen extends StatefulWidget {
   @override
@@ -25,22 +28,18 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
+  int _selectedIndex = 0;
   bool _isLoading = true;
   String? _error;
   UserModel? _userData;
   late List<Widget> _screens;
-  late List<BottomNavigationBarItem> _navigationItems;
   String _currentTitle = 'ScraPekan';
 
   @override
   void initState() {
     super.initState();
-    // Initialize with default values
-    _screens = [HomeMap()];
-    _navigationItems = [
-      BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Map'),
-    ];
+    // Initialize with citizen view by default
+    _screens = _getScreensForRole('citizen');
     _loadUserData();
   }
 
@@ -69,8 +68,8 @@ class _MainScreenState extends State<MainScreen> {
       setState(() {
         _userData = userData;
         _screens = _getScreensForRole(userData.role);
-        _navigationItems = _getNavigationItemsForRole(userData.role);
         _currentTitle = _getTitlesForRole(userData.role)[0];
+        _selectedIndex = 0; // Reset to first screen when role changes
         _isLoading = false;
         _error = null;
       });
@@ -82,18 +81,11 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  void _updateTitle(int index) {
-    final titles = _getTitlesForRole(_userData?.role ?? 'citizen');
-    setState(() {
-      _currentTitle = titles[index];
-    });
-  }
-
   List<String> _getTitlesForRole(String role) {
     switch (role) {
       case 'citizen':
       case 'vendor':
-        return ['Map', 'Log Waste', 'Dashboard', 'Tips', 'Rewards'];
+        return ['Drop-off Points', 'Log Waste', 'Dashboard', 'Tips', 'Rewards'];
       case 'farmer':
         return ['Fertilizer Request', 'Availability', 'Notifications'];
       case 'admin':
@@ -101,14 +93,173 @@ class _MainScreenState extends State<MainScreen> {
       case 'municipal':
         return ['Dashboard', 'Analytics', 'Machines'];
       default:
-        return ['Map'];
+        return ['Drop-off Points'];
+    }
+  }
+
+  List<Widget> _getScreensForRole(String role) {
+    switch (role) {
+      case 'citizen':
+      case 'vendor':
+        return [
+          HomeMapScreen(),
+          CitizenLogWasteScreen(),
+          CitizenDashboardScreen(),
+          CitizenTipsScreen(),
+          CitizenRewardsScreen(),
+        ];
+      case 'farmer':
+        return [
+          FertilizerRequestScreen(),
+          FertilizerStockScreen(),
+          FarmerNotificationsScreen(),
+        ];
+      case 'admin':
+        return [
+          DeliveryConfirmationScreen(),
+          FertilizerLogsScreen(),
+          FarmerRequestsScreen(),
+        ];
+      case 'municipal':
+        return [
+          AdminDashboardScreen(),
+          AnalyticsScreen(),
+          MachineMonitoringScreen(),
+        ];
+      default:
+        return [HomeMapScreen()];
+    }
+  }
+
+  List<BottomNavigationBarItem> _getNavigationItemsForRole(String role) {
+    switch (role) {
+      case 'citizen':
+      case 'vendor':
+        return const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.map),
+            label: 'Map',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.qr_code_scanner),
+            label: 'Log Waste',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.eco),
+            label: 'Tips',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.star),
+            label: 'Rewards',
+          ),
+        ];
+      case 'farmer':
+        return const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.request_page),
+            label: 'Request',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.store),
+            label: 'Availability',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.notifications),
+            label: 'Notifications',
+          ),
+        ];
+      case 'admin':
+        return const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.local_shipping),
+            label: 'Deliveries',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.list),
+            label: 'Logs',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.request_page),
+            label: 'Requests',
+          ),
+        ];
+      case 'municipal':
+        return const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.analytics),
+            label: 'Analytics',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.memory),
+            label: 'Machines',
+          ),
+        ];
+      default:
+        return const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.map),
+            label: 'Map',
+          ),
+        ];
+    }
+  }
+
+  void _updateTitle(int index) {
+    final titles = _getTitlesForRole(_userData?.role ?? 'citizen');
+    setState(() {
+      _currentTitle = titles[index];
+    });
+  }
+
+  void _handleLogout() async {
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      await authService.signOut();
+      
+      if (!mounted) return;
+      
+      Navigator.pop(context);
+      
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => LoginScreen()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      
+      Navigator.pop(context);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error logging out: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(
+      return const Scaffold(
         body: Center(
           child: CircularProgressIndicator(),
         ),
@@ -122,7 +273,7 @@ class _MainScreenState extends State<MainScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(_error!),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               if (_error == 'Please log in')
                 ElevatedButton(
                   onPressed: () {
@@ -131,12 +282,12 @@ class _MainScreenState extends State<MainScreen> {
                       MaterialPageRoute(builder: (context) => LoginScreen()),
                     );
                   },
-                  child: Text('Go to Login'),
+                  child: const Text('Go to Login'),
                 )
               else
                 ElevatedButton(
                   onPressed: _loadUserData,
-                  child: Text('Retry'),
+                  child: const Text('Retry'),
                 ),
             ],
           ),
@@ -144,36 +295,69 @@ class _MainScreenState extends State<MainScreen> {
       );
     }
 
+    final role = _userData?.role ?? 'citizen';
+    final navigationItems = _getNavigationItemsForRole(role);
+
     return Scaffold(
-      appBar: CustomAppBar(title: _currentTitle),
+      appBar: AppBar(
+        title: Text(_currentTitle),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Logout'),
+                  content: const Text('Are you sure you want to logout?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _handleLogout();
+                      },
+                      child: const Text(
+                        'Logout',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
       drawer: _buildDrawer(),
-      body: Navigator(
-        onGenerateRoute: (settings) {
-          return MaterialPageRoute(
-            builder: (context) => IndexedStack(
-              index: _currentIndex,
-              children: _screens,
-            ),
-          );
-        },
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _screens,
       ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
+        currentIndex: _selectedIndex,
         onTap: (index) {
           setState(() {
-            _currentIndex = index;
+            _selectedIndex = index;
             _updateTitle(index);
           });
         },
-        items: _navigationItems,
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Theme.of(context).primaryColor,
         unselectedItemColor: Colors.grey,
+        items: navigationItems,
       ),
     );
   }
 
   Widget _buildDrawer() {
+    final role = _userData?.role ?? 'citizen';
+    final titles = _getTitlesForRole(role);
+    final navigationItems = _getNavigationItemsForRole(role);
+
     return Drawer(
       child: ListView(
         padding: EdgeInsets.zero,
@@ -205,36 +389,21 @@ class _MainScreenState extends State<MainScreen> {
               ],
             ),
           ),
-          ListTile(
-            leading: Icon(Icons.home),
-            title: Text('Home'),
-            onTap: () {
-              setState(() => _currentIndex = 0);
-              Navigator.pop(context);
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.recycling),
-            title: Text('Recycle'),
-            onTap: () {
-              setState(() => _currentIndex = 1);
-              Navigator.pop(context);
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.leaderboard),
-            title: Text('Leaderboard'),
-            onTap: () {
-              setState(() => _currentIndex = 2);
-              Navigator.pop(context);
-            },
+          ...List.generate(navigationItems.length, (index) => 
+            ListTile(
+              leading: navigationItems[index].icon,
+              title: Text(titles[index]),
+              onTap: () {
+                setState(() => _selectedIndex = index);
+                Navigator.pop(context);
+              },
+            ),
           ),
           Divider(),
           ListTile(
             leading: Icon(Icons.info),
             title: Text('About'),
             onTap: () {
-              // TODO: Navigate to About screen
               Navigator.pop(context);
             },
           ),
@@ -242,7 +411,6 @@ class _MainScreenState extends State<MainScreen> {
             leading: Icon(Icons.help),
             title: Text('Help & Support'),
             onTap: () {
-              // TODO: Navigate to Help screen
               Navigator.pop(context);
             },
           ),
@@ -250,97 +418,13 @@ class _MainScreenState extends State<MainScreen> {
           ListTile(
             leading: Icon(Icons.logout),
             title: Text('Logout'),
-            onTap: () async {
-              try {
-                final authService = await AuthService.create();
-                await authService.signOut();
-                if (mounted) {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => LoginScreen()),
-                    (route) => false,
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error logging out: $e')),
-                  );
-                }
-              }
+            onTap: () {
+              Navigator.pop(context);
+              _handleLogout();
             },
           ),
         ],
       ),
     );
-  }
-
-  List<Widget> _getScreensForRole(String role) {
-    switch (role) {
-      case 'citizen':
-      case 'vendor':
-        return [
-          HomeMap(),
-          LogWasteScreen(),
-          DashboardScreen(),
-          CompostTipsScreen(),
-          RewardsScreen(),
-        ];
-      case 'farmer':
-        return [
-          FertilizerRequestScreen(),
-          FertilizerStockScreen(),
-          FarmerNotificationsScreen(),
-        ];
-      case 'admin':
-        return [
-          DeliveryConfirmationScreen(),
-          FertilizerLogsScreen(),
-          FarmerRequestsScreen(),
-        ];
-      case 'municipal':
-        return [
-          AdminDashboardScreen(),
-          AnalyticsScreen(),
-          MachineMonitoringScreen(),
-        ];
-      default:
-        return [HomeMap()];
-    }
-  }
-
-  List<BottomNavigationBarItem> _getNavigationItemsForRole(String role) {
-    switch (role) {
-      case 'citizen':
-      case 'vendor':
-        return [
-          BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Map'),
-          BottomNavigationBarItem(icon: Icon(Icons.qr_code), label: 'Log Waste'),
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
-          BottomNavigationBarItem(icon: Icon(Icons.eco), label: 'Tips'),
-          BottomNavigationBarItem(icon: Icon(Icons.star), label: 'Rewards'),
-        ];
-      case 'farmer':
-        return [
-          BottomNavigationBarItem(icon: Icon(Icons.request_page), label: 'Request'),
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Availability'),
-          BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Notifications'),
-        ];
-      case 'admin':
-        return [
-          BottomNavigationBarItem(icon: Icon(Icons.local_shipping), label: 'Deliveries'),
-          BottomNavigationBarItem(icon: Icon(Icons.list), label: 'Logs'),
-          BottomNavigationBarItem(icon: Icon(Icons.request_page), label: 'Requests'),
-        ];
-      case 'municipal':
-        return [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
-          BottomNavigationBarItem(icon: Icon(Icons.analytics), label: 'Analytics'),
-          BottomNavigationBarItem(icon: Icon(Icons.memory), label: 'Machines'),
-        ];
-      default:
-        return [
-          BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Map'),
-        ];
-    }
   }
 } 

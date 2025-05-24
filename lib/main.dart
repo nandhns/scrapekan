@@ -12,6 +12,10 @@ import 'services/auth_service.dart';
 import 'services/connectivity_service.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'providers/service_provider.dart';
+import 'screens/dashboard_screen.dart';
+import 'screens/notifications_screen.dart';
+import 'screens/compost_batch_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,9 +51,11 @@ Future<void> main() async {
     
     print('Firebase initialized successfully for ${kIsWeb ? 'Web' : 'Android'}');
     
-    runApp(MyApp(
-      authService: authService,
-      connectivityService: connectivityService,
+    runApp(ServiceProvider(
+      child: MyApp(
+        authService: authService,
+        connectivityService: connectivityService,
+      ),
     ));
     
   } catch (e) {
@@ -134,88 +140,64 @@ class MyApp extends StatelessWidget {
           ),
           fontFamily: GoogleFonts.notoSans().fontFamily,
         ),
-        home: SplashScreen(),
+        home: StreamBuilder<User?>(
+          stream: FirebaseAuth.instance.authStateChanges(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Center(child: CircularProgressIndicator());
+            }
+            
+            if (snapshot.hasData) {
+              return MainScreen();
+            }
+            
+            return LoginScreen();
+          },
+        ),
       ),
     );
   }
 }
 
-class SplashScreen extends StatefulWidget {
+class MainScreen extends StatefulWidget {
   @override
-  _SplashScreenState createState() => _SplashScreenState();
+  _MainScreenState createState() => _MainScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
-  @override
-  void initState() {
-    super.initState();
-    _checkAuthState();
-  }
+class _MainScreenState extends State<MainScreen> {
+  int _selectedIndex = 0;
 
-  Future<void> _checkAuthState() async {
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final connectivityService = Provider.of<ConnectivityService>(context, listen: false);
-    
-    // Add a small delay to ensure smooth transition
-    await Future.delayed(Duration(milliseconds: 500));
-    
-    if (!mounted) return;
-
-    // Check connectivity first
-    if (!connectivityService.hasConnection) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('You are offline. Some features may be limited.'),
-          duration: Duration(seconds: 3),
-          backgroundColor: Colors.orange,
-        ),
-      );
-    }
-
-    // Check auth state with user data
-    final userData = await authService.getCurrentUserWithData();
-    if (!mounted) return;
-
-    if (userData != null) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => MainScreen()),
-      );
-    } else {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => LoginScreen()),
-      );
-    }
-  }
+  final List<Widget> _screens = [
+    DashboardScreen(),
+    NotificationsScreen(),
+    CompostBatchScreen(),
+  ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).primaryColor,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Add your app logo here
-            Icon(
-              Icons.recycling,
-              size: 80,
-              color: Colors.white,
-            ),
-            SizedBox(height: 24),
-            Text(
-              'ScrapeKan',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            SizedBox(height: 24),
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-            ),
-          ],
-        ),
+      body: _screens[_selectedIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
+        items: [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.notifications),
+            label: 'Notifications',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.eco),
+            label: 'Compost',
+          ),
+        ],
       ),
     );
   }
