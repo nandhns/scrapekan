@@ -36,8 +36,8 @@ class UserModel {
       points: json['points'] as int? ?? 0,
       totalWaste: (json['totalWaste'] as num?)?.toDouble() ?? 0.0,
       co2Saved: (json['co2Saved'] as num?)?.toDouble() ?? 0.0,
-      completedTasks: (json['completedTasks'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
-      achievements: (json['achievements'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
+      completedTasks: List<String>.from(json['completedTasks'] ?? []),
+      achievements: List<String>.from(json['achievements'] ?? []),
       createdAt: _parseDateTime(json['createdAt']),
       updatedAt: _parseDateTime(json['updatedAt']),
     );
@@ -52,8 +52,8 @@ class UserModel {
       points: doc['points'] as int? ?? 0,
       totalWaste: (doc['totalWaste'] as num?)?.toDouble() ?? 0.0,
       co2Saved: (doc['co2Saved'] as num?)?.toDouble() ?? 0.0,
-      completedTasks: (doc['completedTasks'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
-      achievements: (doc['achievements'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
+      completedTasks: List<String>.from(doc['completedTasks'] ?? []),
+      achievements: List<String>.from(doc['achievements'] ?? []),
       createdAt: doc['createdAt'] != null ? (doc['createdAt'] as Timestamp).toDate() : null,
       updatedAt: doc['updatedAt'] != null ? (doc['updatedAt'] as Timestamp).toDate() : null,
     );

@@ -30,16 +30,19 @@ class _LoginScreenState extends State<LoginScreen> {
         showBackButton: false,
       ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: EdgeInsets.all(16.0),
           child: Form(
             key: _formKey,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                SizedBox(height: 32),
                 Text(
                   'Welcome to ScraPekan',
                   style: Theme.of(context).textTheme.headlineMedium,
+                  textAlign: TextAlign.center,
                 ),
                 SizedBox(height: 32),
                 if (_errorMessage != null) ...[
@@ -52,6 +55,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Text(
                       _errorMessage!,
                       style: TextStyle(color: Colors.red[900]),
+                      textAlign: TextAlign.center,
                     ),
                   ),
                   SizedBox(height: 16),
@@ -129,6 +133,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       },
                   child: Text('Don\'t have an account? Register'),
                 ),
+                SizedBox(height: 16),
               ],
             ),
           ),

@@ -9,8 +9,10 @@ import 'compost_tips_screen.dart';
 import 'rewards_screen.dart';
 import 'farmer/fertilizer_request_screen.dart';
 import 'farmer/fertilizer_stock_screen.dart';
+import 'farmer/farmer_notifications_screen.dart';
 import 'admin/delivery_confirmation_screen.dart';
 import 'admin/fertilizer_logs_screen.dart';
+import 'admin/farmer_requests_screen.dart';
 import 'municipal/admin_dashboard_screen.dart';
 import 'municipal/analytics_screen.dart';
 import 'municipal/machine_monitoring_screen.dart';
@@ -87,9 +89,9 @@ class _MainScreenState extends State<MainScreen> {
       case 'vendor':
         return ['Map', 'Log Waste', 'Dashboard', 'Tips', 'Rewards'];
       case 'farmer':
-        return ['Fertilizer Request', 'Stock', 'Dashboard'];
+        return ['Fertilizer Request', 'Availability', 'Notifications'];
       case 'admin':
-        return ['Delivery Confirmation', 'Logs', 'Dashboard'];
+        return ['Delivery Confirmation', 'Logs', 'Requests'];
       case 'municipal':
         return ['Overview', 'Analytics', 'Machines'];
       default:
@@ -281,13 +283,13 @@ class _MainScreenState extends State<MainScreen> {
         return [
           FertilizerRequestScreen(),
           FertilizerStockScreen(),
-          DashboardScreen(),
+          FarmerNotificationsScreen(),
         ];
       case 'admin':
         return [
           DeliveryConfirmationScreen(),
           FertilizerLogsScreen(),
-          DashboardScreen(),
+          FarmerRequestsScreen(),
         ];
       case 'municipal':
         return [
@@ -314,14 +316,14 @@ class _MainScreenState extends State<MainScreen> {
       case 'farmer':
         return [
           BottomNavigationBarItem(icon: Icon(Icons.request_page), label: 'Request'),
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Stock'),
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
+          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Availability'),
+          BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Notifications'),
         ];
       case 'admin':
         return [
-          BottomNavigationBarItem(icon: Icon(Icons.check), label: 'Confirm'),
+          BottomNavigationBarItem(icon: Icon(Icons.local_shipping), label: 'Deliveries'),
           BottomNavigationBarItem(icon: Icon(Icons.list), label: 'Logs'),
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
+          BottomNavigationBarItem(icon: Icon(Icons.request_page), label: 'Requests'),
         ];
       case 'municipal':
         return [

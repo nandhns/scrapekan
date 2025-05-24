@@ -14,21 +14,389 @@ class _MachineMonitoringScreenState extends State<MachineMonitoringScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Machine Monitoring')),
-      body: SingleChildScrollView(
+      body: SafeArea(
+        child: SingleChildScrollView(
+          physics: ClampingScrollPhysics(),
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Compost Machine Monitoring',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Monitor and manage compost machine operations',
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Colors.grey[600],
+                ),
+              ),
+              SizedBox(height: 24),
+              
+              // Machine Selector
+              _buildMachineSelector(),
+              SizedBox(height: 24),
+              
+              // Status Overview
+              _buildStatusOverview(),
+              SizedBox(height: 24),
+              
+              // Performance Metrics
+              _buildPerformanceMetrics(),
+              SizedBox(height: 24),
+              
+              // Maintenance Schedule
+              Card(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Maintenance Schedule',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      SizedBox(height: 16),
+                      StreamBuilder<QuerySnapshot>(
+                        stream: _getMaintenanceAlertsStream(),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return Text('Error: ${snapshot.error}');
+                          }
+
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return Center(child: CircularProgressIndicator());
+                          }
+
+                          final alerts = snapshot.data?.docs ?? [];
+                          
+                          if (alerts.isEmpty) {
+                            return Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Text('No maintenance tasks scheduled'),
+                              ),
+                            );
+                          }
+
+                          return ListView.builder(
+                            shrinkWrap: true,
+                            physics: NeverScrollableScrollPhysics(),
+                            itemCount: alerts.length,
+                            itemBuilder: (context, index) {
+                              final alert = alerts[index].data() as Map<String, dynamic>;
+                              return _buildMaintenanceItem(
+                                alert['machine'] as String,
+                                alert['task'] as String,
+                                alert['schedule'] as String,
+                                _getAlertColor(alert['severity'] as String),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _MachineStatusCard() {
+    return Card(
+      elevation: 4,
+      child: Padding(
         padding: EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildMachineSelector(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Machine 01 - Pasar Tani Kekal Pekan',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: Colors.green,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Operating normally',
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    // TODO: Implement configure functionality
+                  },
+                  icon: Icon(Icons.settings),
+                  label: Text('Configure'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).primaryColor,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
             SizedBox(height: 24),
-            _buildStatusOverview(),
-            SizedBox(height: 24),
-            _buildPerformanceMetrics(),
-            SizedBox(height: 24),
-            _buildMaintenanceAlerts(),
+            
+            // Machine Metrics Grid
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              childAspectRatio: 1.5,
+              children: [
+                _buildMetricCard(
+                  context,
+                  'Temperature',
+                  '65°C',
+                  0.65,
+                  'Normal',
+                  Colors.orange,
+                  '40°C - 70°C',
+                ),
+                _buildMetricCard(
+                  context,
+                  'Moisture',
+                  '45%',
+                  0.45,
+                  'Normal',
+                  Colors.blue,
+                  '30% - 60%',
+                ),
+                _buildMetricCard(
+                  context,
+                  'Capacity',
+                  '75%',
+                  0.75,
+                  'Good',
+                  Colors.green,
+                  '150kg/200kg',
+                ),
+                _buildMetricCard(
+                  context,
+                  'Processing',
+                  '80%',
+                  0.80,
+                  'Active',
+                  Colors.purple,
+                  'Batch #245',
+                ),
+              ],
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildMetricCard(
+    BuildContext context,
+    String title,
+    String value,
+    double progress,
+    String status,
+    Color color,
+    String subtitle,
+  ) {
+    return Container(
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w500,
+              fontSize: 14,
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 24,
+            ),
+          ),
+          SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: progress,
+            backgroundColor: Colors.grey[200],
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                status,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 12,
+                ),
+              ),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _MaintenanceSchedule() {
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.calendar_today, color: Theme.of(context).primaryColor),
+                SizedBox(width: 12),
+                Text(
+                  'Maintenance Schedule',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ],
+            ),
+            SizedBox(height: 24),
+            _buildMaintenanceItem(
+              context,
+              'Machine 01',
+              'Filter replacement and sensor cleaning',
+              'Tomorrow',
+              Colors.orange,
+            ),
+            Divider(),
+            _buildMaintenanceItem(
+              context,
+              'Machine 03',
+              'Monthly performance check',
+              'Next Week',
+              Colors.blue,
+            ),
+            Divider(),
+            _buildMaintenanceItem(
+              context,
+              'Machine 02',
+              'Quarterly system calibration',
+              'In 2 Weeks',
+              Colors.green,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMaintenanceItem(
+    BuildContext context,
+    String machine,
+    String task,
+    String schedule,
+    Color color,
+  ) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  machine,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                Text(
+                  task,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              schedule,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w500,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

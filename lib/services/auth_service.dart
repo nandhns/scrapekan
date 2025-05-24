@@ -100,26 +100,40 @@ class AuthService {
         throw 'Sign in failed: No user returned';
       }
       
-      // Try to get user data from Firestore
-      try {
-        final userData = await getUserData(result.user!.uid);
-        if (userData != null) {
-          return userData;
-        }
-      } catch (e) {
-        // If offline, try to get cached data
-        final cachedData = await _loadCachedUserData(result.user!.uid);
-        if (cachedData != null) {
-          return cachedData;
-        }
-        
-        if (e.toString().contains('offline')) {
-          throw 'Network error: Please check your internet connection. Some features may be limited in offline mode.';
-        }
+      // Get user data from Firestore
+      final doc = await _firestore.collection('users').doc(result.user!.uid).get();
+      
+      if (!doc.exists) {
+        throw 'User profile not found';
       }
 
-      // If we get here, something is wrong - the user exists but has no data
-      throw 'User data not found. Please contact support.';
+      try {
+        // Convert Firestore data to UserModel
+        final data = Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
+        data['id'] = doc.id; // Add document ID to the data
+        
+        // Ensure lists are properly initialized
+        data['completedTasks'] = (data['completedTasks'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ?? [];
+        data['achievements'] = (data['achievements'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ?? [];
+        
+        // Ensure numeric fields are properly typed
+        data['points'] = (data['points'] as num?)?.toInt() ?? 0;
+        data['totalWaste'] = (data['totalWaste'] as num?)?.toDouble() ?? 0.0;
+        data['co2Saved'] = (data['co2Saved'] as num?)?.toDouble() ?? 0.0;
+        
+        final userData = UserModel.fromFirestore(data);
+        _cachedUserData = userData;
+        await _cacheUserData(userData);
+        
+        return userData;
+      } catch (e) {
+        print('Error converting user data: $e');
+        throw 'Error loading user profile. Please try again.';
+      }
     } on FirebaseAuthException catch (e) {
       print('Sign in error: ${e.code} - ${e.message}');
       if (e.code == 'network-request-failed') {
@@ -159,19 +173,39 @@ class AuthService {
         throw 'Registration failed: No user created';
       }
 
-      // Create user data with the specified role
-      final userData = await _createUserData(result.user!.uid, email, name, role);
-      
-      // Verify the role was properly set
-      final verifiedData = await getUserData(result.user!.uid);
-      if (verifiedData?.role != role) {
-        // If role doesn't match, delete the user and throw error
-        await result.user!.delete();
-        await _firestore.collection('users').doc(result.user!.uid).delete();
-        throw 'Failed to set user role properly';
+      // Create user data
+      final userData = UserModel(
+        id: result.user!.uid,
+        email: email,
+        name: name,
+        role: role,
+        points: 0,
+        totalWaste: 0.0,
+        co2Saved: 0.0,
+        completedTasks: [],
+        achievements: [],
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      try {
+        // Save to Firestore
+        final userDoc = _firestore.collection('users').doc(result.user!.uid);
+        final firestoreData = userData.toFirestore();
+        firestoreData.remove('id'); // Remove ID as it's the document ID
+        await userDoc.set(firestoreData);
+
+        // Cache the user data
+        _cachedUserData = userData;
+        await _cacheUserData(userData);
+
+        return userData;
+      } catch (e) {
+        // If saving to Firestore fails, delete the auth user
+        await result.user?.delete();
+        print('Error saving user data: $e');
+        throw 'Failed to create user profile';
       }
-      
-      return verifiedData;
     } on FirebaseAuthException catch (e) {
       print('Registration error: ${e.code} - ${e.message}');
       if (e.code == 'network-request-failed') {
@@ -181,47 +215,6 @@ class AuthService {
     } catch (e) {
       print('Registration error: $e');
       throw 'Registration failed: $e';
-    }
-  }
-
-  // Create user data in Firestore
-  Future<UserModel> _createUserData(String uid, String email, String name, String role) async {
-    final userData = UserModel(
-      id: uid,
-      email: email,
-      name: name,
-      role: role,
-      points: 0,
-      totalWaste: 0.0,
-      co2Saved: 0.0,
-      completedTasks: [],
-      achievements: [],
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    );
-
-    try {
-      // Use a transaction to ensure data consistency
-      await _firestore.runTransaction((transaction) async {
-        final userDoc = _firestore.collection('users').doc(uid);
-        final snapshot = await transaction.get(userDoc);
-        
-        if (!snapshot.exists) {
-          // Remove the ID from Firestore document since it's the document ID
-          final firestoreData = userData.toFirestore();
-          firestoreData.remove('id');
-          transaction.set(userDoc, firestoreData);
-        } else {
-          throw 'User document already exists';
-        }
-      });
-      
-      _cachedUserData = userData;
-      await _cacheUserData(userData);
-      return userData;
-    } catch (e) {
-      print('Create user data error: $e');
-      throw 'Failed to create user data: $e';
     }
   }
 

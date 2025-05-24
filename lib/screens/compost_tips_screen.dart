@@ -46,6 +46,23 @@ class CompostTipsScreen extends StatelessWidget {
     },
   ];
 
+  final List<Map<String, dynamic>> _news = [
+    {
+      'title': 'Pahang Launches New Community Composting Initiative',
+      'date': '15 March 2024',
+      'image': 'assets/images/community_composting.jpg',  // You'll need to add this image
+      'summary': 'The state of Pahang has launched a new community composting initiative aimed at reducing organic waste in landfills. The program will establish composting centers in major townships, starting with Kuantan and Gambang.',
+      'link': 'Read more about the initiative',
+    },
+    {
+      'title': 'Local Schools Join Green Waste Management Program',
+      'date': '10 March 2024',
+      'image': 'assets/images/school_composting.jpg',  // You'll need to add this image
+      'summary': 'Five schools in the Kuantan district have joined a new program to implement composting practices in their facilities. The initiative aims to educate students about sustainable waste management while reducing the schools\' environmental impact.',
+      'link': 'Learn about the school program',
+    },
+  ];
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -54,14 +71,100 @@ class CompostTipsScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Composting Guide',
+            'Composting Tips & News',
             style: Theme.of(context).textTheme.headlineMedium,
           ),
+          SizedBox(height: 8),
+          Text(
+            'Learn how to improve your composting practices',
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              color: Colors.grey[600],
+            ),
+          ),
           SizedBox(height: 24),
+          Text(
+            'Latest News',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          SizedBox(height: 16),
+          ..._buildNewsSection(context),
+          SizedBox(height: 32),
+          Text(
+            'Composting Guidelines',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          SizedBox(height: 16),
           ..._tips.map((section) => _buildSection(context, section)).toList(),
         ],
       ),
     );
+  }
+
+  List<Widget> _buildNewsSection(BuildContext context) {
+    return _news.map((newsItem) => Card(
+      margin: EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 200,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(4),
+                topRight: Radius.circular(4),
+              ),
+              image: DecorationImage(
+                image: AssetImage(newsItem['image'] as String),
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  newsItem['date'] as String,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  newsItem['title'] as String,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  newsItem['summary'] as String,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                SizedBox(height: 16),
+                TextButton(
+                  onPressed: () {
+                    // TODO: Implement news link action
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(newsItem['link'] as String),
+                      SizedBox(width: 8),
+                      Icon(Icons.arrow_forward, size: 16),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    )).toList();
   }
 
   Widget _buildSection(BuildContext context, Map<String, dynamic> section) {
