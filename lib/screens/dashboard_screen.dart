@@ -20,6 +20,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<String> _monthLabels = [];
   Stream<QuerySnapshot>? _wasteLogsStream;
 
+  // Map of location IDs to readable names
+  final Map<String, String> _dropOffLocations = {
+    'loc1': 'Pasar Tani Kekal Pekan',
+    'loc2': 'Pasar Tani Kekal Gambang',
+    'loc3': 'Taman Tas Collection Center',
+    'loc4': 'Bandar Putra Collection Point',
+  };
+
+  String _getTimeAgo(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays}d ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}m ago';
+    } else {
+      return 'Just now';
+    }
+  }
+
   // Add tier thresholds
   final List<Map<String, dynamic>> _climateTiers = [
     {'name': 'Bronze Climate Champion', 'threshold': 25},
@@ -51,11 +74,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
 
-    _wasteLogsStream = FirebaseFirestore.instance
-        .collection('waste_logs')
-        .where('userId', isEqualTo: user.uid)
-        .orderBy('timestamp', descending: true)
-        .snapshots();
+    setState(() {
+      _wasteLogsStream = FirebaseFirestore.instance
+          .collection('waste_logs')
+          .where('userId', isEqualTo: user.uid)
+          .orderBy('timestamp', descending: true)
+          .snapshots();
+    });
+  }
+
+  void _updateStreamForPeriod(String period) {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final user = authService.currentUser;
+    
+    if (user == null) return;
+
+    DateTime startDate;
+    final now = DateTime.now();
+
+    switch (period) {
+      case 'week':
+        startDate = now.subtract(Duration(days: 7));
+        break;
+      case 'month':
+        startDate = DateTime(now.year, now.month, 1);
+        break;
+      case 'year':
+        startDate = DateTime(now.year, 1, 1);
+        break;
+      default:
+        startDate = now.subtract(Duration(days: 30));
+    }
+
+    setState(() {
+      _wasteLogsStream = FirebaseFirestore.instance
+          .collection('waste_logs')
+          .where('userId', isEqualTo: user.uid)
+          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate))
+          .orderBy('timestamp', descending: true)
+          .snapshots();
+    });
   }
 
   // Add method to get next tier
@@ -122,16 +180,129 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           SizedBox(height: 16),
           Card(
-            child: ListView.builder(
-              shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
-              itemCount: 5,
-              itemBuilder: (context, index) {
-                return ListTile(
-                  leading: Icon(Icons.recycling),
-                  title: Text('Organic Waste Logged'),
-                  subtitle: Text('2.5 kg • 10 points earned'),
-                  trailing: Text('2h ago'),
+            child: StreamBuilder<QuerySnapshot>(
+              stream: _wasteLogsStream,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  print('Stream error: ${snapshot.error}');
+                  return Center(
+                    child: Text(
+                      'Error loading activities: ${snapshot.error}',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  );
+                }
+
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
+
+                final activities = snapshot.data?.docs ?? [];
+
+                if (activities.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.inbox_outlined,
+                            size: 48,
+                            color: Colors.grey[400],
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'No waste logs yet',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  shrinkWrap: true,
+                  physics: NeverScrollableScrollPhysics(),
+                  itemCount: activities.length.clamp(0, 5),
+                  separatorBuilder: (context, index) => Divider(),
+                  itemBuilder: (context, index) {
+                    Map<String, dynamic>? activityData;
+                    try {
+                      activityData = activities[index].data() as Map<String, dynamic>;
+                    } catch (e) {
+                      print('Error casting activity data: $e');
+                      return SizedBox.shrink();
+                    }
+
+                    String timeAgo = '';
+                    String locationName = 'Unknown Location';
+                    double weight = 0;
+                    
+                    try {
+                      if (activityData.containsKey('timestamp')) {
+                        final timestamp = activityData['timestamp'] as Timestamp;
+                        final date = timestamp.toDate();
+                        timeAgo = _getTimeAgo(date);
+                      }
+                      
+                      if (activityData.containsKey('location')) {
+                        final location = activityData['location'] as String?;
+                        locationName = _dropOffLocations[location] ?? 'Unknown Location';
+                      }
+                      
+                      if (activityData.containsKey('weight')) {
+                        weight = (activityData['weight'] as num).toDouble();
+                      }
+                    } catch (e) {
+                      print('Error processing activity fields: $e');
+                    }
+
+                    return Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(Icons.recycling, color: Colors.green),
+                          ),
+                          SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${weight.toStringAsFixed(1)}kg waste dropped off',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  '$locationName • $timeAgo',
+                                  style: TextStyle(
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 );
               },
             ),
