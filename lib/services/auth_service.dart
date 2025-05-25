@@ -76,6 +76,7 @@ class AuthService extends ChangeNotifier {
     String email,
     String password,
     String name,
+    String role,
   ) async {
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
@@ -88,9 +89,13 @@ class AuthService extends ChangeNotifier {
       await _firestore.collection('users').doc(credential.user!.uid).set({
         'email': email,
         'name': name,
-        'role': 'citizen',
+        'role': role,
         'createdAt': now,
         'updatedAt': now,
+        'isActive': true,
+        'points': 0,
+        'totalWaste': 0,
+        'totalCompost': 0,
       });
 
       await initUserData();

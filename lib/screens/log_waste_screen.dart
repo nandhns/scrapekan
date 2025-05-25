@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class LogWasteScreen extends StatefulWidget {
   @override
@@ -19,8 +20,9 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
   String? _selectedLocation;
   String? _selectedWasteType;
   bool _isManualMode = true;
-  late final MobileScannerController _scannerController;
+  MobileScannerController? _scannerController;
   bool _isSubmitting = false;
+  bool _hasCameraPermission = false;
   List<Map<String, dynamic>> _dropOffLocations = [];
 
   final List<Map<String, String>> _wasteTypes = [
@@ -33,121 +35,56 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
   @override
   void initState() {
     super.initState();
-    _scannerController = MobileScannerController(
-      facing: CameraFacing.back,
-      torchEnabled: false,
-      formats: [BarcodeFormat.qrCode],
-    );
+    _initializeScanner();
     _fetchDropOffLocations();
-    //_addInitialDropOffPoints();
+  }
+
+  Future<void> _initializeScanner() async {
+    final status = await Permission.camera.request();
+    setState(() {
+      _hasCameraPermission = status.isGranted;
+    });
+
+    if (_hasCameraPermission) {
+      _scannerController = MobileScannerController(
+        facing: CameraFacing.back,
+        torchEnabled: false,
+        formats: [BarcodeFormat.qrCode],
+      );
+    }
   }
 
   @override
   void dispose() {
     _weightController.dispose();
     _noteController.dispose();
-    _scannerController.dispose();
+    _scannerController?.dispose();
     super.dispose();
   }
 
   Future<void> _fetchDropOffLocations() async {
     try {
-      print('Fetching dropoff locations...');
       final snapshot = await FirebaseFirestore.instance
           .collection('dropoff_points')
           .where('isOpen', isEqualTo: true)
           .get();
       
-      print('Found ${snapshot.docs.length} dropoff points');
-      
       setState(() {
         _dropOffLocations = snapshot.docs.map((doc) {
           final data = doc.data();
-          print('Processing dropoff point: ${doc.id} - ${data['name']}');
           return {
             'value': doc.id,
             'label': data['name'] as String? ?? 'Unknown Location',
           };
         }).toList();
       });
-      
-      print('Dropoff locations loaded: $_dropOffLocations');
     } catch (e) {
-      print('Error fetching dropoff locations: $e');
-    }
-  }
-
-  Future<void> _addInitialDropOffPoints() async {
-    try {
-      print('Starting to add initial dropoff points...');
-      
-      // First check if points already exist
-      final existing = await FirebaseFirestore.instance
-          .collection('dropoff_points')
-          .limit(1)
-          .get();
-      
-      if (existing.docs.isNotEmpty) {
-        print('Dropoff points already exist, skipping initialization');
-        return;
-      }
-
-      final batch = FirebaseFirestore.instance.batch();
-      final dropoffPoints = [
-        {
-          'name': 'Pasar Tani Kekal Pekan',
-          'address': 'Jalan Engku Muda Mansor, 26600 Pekan, Pahang',
-          'isOpen': true,
-          'currentCapacity': 0,
-          'maxCapacity': 1000,
-          'managedBy': 'municipal_worker_1',
-          'lastUpdated': FieldValue.serverTimestamp(),
-        },
-        {
-          'name': 'Pasar Tani Kekal Gambang',
-          'address': 'Jalan Gambang Perdana 1, 26300 Gambang, Pahang',
-          'isOpen': true,
-          'currentCapacity': 0,
-          'maxCapacity': 800,
-          'managedBy': 'municipal_worker_1',
-          'lastUpdated': FieldValue.serverTimestamp(),
-        },
-        {
-          'name': 'Taman Tas Collection Center',
-          'address': 'Taman Tas, 25150 Kuantan, Pahang',
-          'isOpen': true,
-          'currentCapacity': 0,
-          'maxCapacity': 1200,
-          'managedBy': 'municipal_worker_2',
-          'lastUpdated': FieldValue.serverTimestamp(),
-        },
-        {
-          'name': 'Bandar Putra Collection Point',
-          'address': 'Bandar Putra, 26600 Pekan, Pahang',
-          'isOpen': true,
-          'currentCapacity': 0,
-          'maxCapacity': 500,
-          'managedBy': 'municipal_worker_2',
-          'lastUpdated': FieldValue.serverTimestamp(),
-        }
-      ];
-
-      print('Creating ${dropoffPoints.length} dropoff points...');
-
-      for (final point in dropoffPoints) {
-        final ref = FirebaseFirestore.instance.collection('dropoff_points').doc();
-        batch.set(ref, point);
-        print('Added point to batch: ${point['name']}');
-      }
-
-      await batch.commit();
-      print('Successfully committed all dropoff points to Firestore');
-      
-      // Refresh the dropoff locations in the form
-      await _fetchDropOffLocations();
-    } catch (e) {
-      print('Error adding initial dropoff points: $e');
-      print('Error details: ${e.toString()}');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error loading drop-off locations: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -162,6 +99,64 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
       setState(() {
         _selectedDate = picked;
       });
+    }
+  }
+
+  Future<void> _handleSubmit() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final userId = authService.currentUser?.uid;
+
+      if (userId == null) {
+        throw Exception('User not logged in');
+      }
+
+      await FirebaseFirestore.instance.collection('waste_logs').add({
+        'userId': userId,
+        'weight': double.parse(_weightController.text),
+        'wasteType': _selectedWasteType,
+        'dropOffPointId': _selectedLocation,
+        'note': _noteController.text,
+        'timestamp': _selectedDate,
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Waste log submitted successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // Reset form
+      _formKey.currentState!.reset();
+      _weightController.clear();
+      _noteController.clear();
+      setState(() {
+        _selectedDate = DateTime.now();
+        _selectedLocation = null;
+        _selectedWasteType = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error submitting waste log: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
     }
   }
 
@@ -203,11 +198,11 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        'Manual Form',
+                        'Manual Entry',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: _isManualMode ? Colors.white : Colors.black,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
@@ -215,7 +210,27 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
                 ),
                 Expanded(
                   child: GestureDetector(
-                    onTap: () => setState(() => _isManualMode = false),
+                    onTap: () async {
+                      if (!_hasCameraPermission) {
+                        final status = await Permission.camera.request();
+                        setState(() {
+                          _hasCameraPermission = status.isGranted;
+                        });
+                        if (!status.isGranted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Camera permission is required for QR scanning'),
+                              action: SnackBarAction(
+                                label: 'Settings',
+                                onPressed: () => openAppSettings(),
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+                      }
+                      setState(() => _isManualMode = false);
+                    },
                     child: Container(
                       padding: EdgeInsets.symmetric(vertical: 12),
                       decoration: BoxDecoration(
@@ -227,7 +242,7 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: !_isManualMode ? Colors.white : Colors.black,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
@@ -249,244 +264,140 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
   Widget _buildManualForm() {
     return Form(
       key: _formKey,
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Date Picker
-            InkWell(
-              onTap: () => _selectDate(context),
-              child: InputDecorator(
-                decoration: InputDecoration(
-                  labelText: 'Date',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.calendar_today),
-                ),
-                child: Text(
-                  '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
-                ),
-              ),
+      child: ListView(
+        children: [
+          DropdownButtonFormField<String>(
+            value: _selectedLocation,
+            decoration: InputDecoration(
+              labelText: 'Drop-off Location',
+              border: OutlineInputBorder(),
             ),
-            SizedBox(height: 16),
-
-            // Drop-off Location
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(
-                labelText: 'Drop-off Location',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.location_on),
-              ),
-              value: _selectedLocation,
-              items: _dropOffLocations.isEmpty
-                ? [DropdownMenuItem(value: '', child: Text('Loading locations...'))]
-                : _dropOffLocations.map((location) {
-                    return DropdownMenuItem(
-                      value: location['value'].toString(),
-                      child: Text(location['label']!),
-                    );
-                  }).toList(),
-              onChanged: _dropOffLocations.isEmpty ? null : (value) {
-                setState(() => _selectedLocation = value);
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please select a drop-off location';
-                }
-                return null;
-              },
+            items: _dropOffLocations.map((location) {
+              return DropdownMenuItem(
+                value: location['value'] as String,
+                child: Text(location['label'] as String),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() {
+                _selectedLocation = value;
+              });
+            },
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please select a drop-off location';
+              }
+              return null;
+            },
+          ),
+          SizedBox(height: 16),
+          TextFormField(
+            controller: _weightController,
+            decoration: InputDecoration(
+              labelText: 'Weight (kg)',
+              border: OutlineInputBorder(),
+              suffixText: 'kg',
             ),
-            SizedBox(height: 16),
-
-            // Waste Type
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(
-                labelText: 'Waste Type',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.delete_outline),
-              ),
-              value: _selectedWasteType,
-              items: _wasteTypes.map((type) {
-                return DropdownMenuItem(
-                  value: type['value'],
-                  child: Text(type['label']!),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() => _selectedWasteType = value);
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please select a waste type';
-                }
-                return null;
-              },
+            keyboardType: TextInputType.numberWithOptions(decimal: true),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter the weight';
+              }
+              if (double.tryParse(value) == null) {
+                return 'Please enter a valid number';
+              }
+              return null;
+            },
+          ),
+          SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            value: _selectedWasteType,
+            decoration: InputDecoration(
+              labelText: 'Waste Type',
+              border: OutlineInputBorder(),
             ),
-            SizedBox(height: 16),
-
-            // Weight
-            TextFormField(
-              controller: _weightController,
-              decoration: InputDecoration(
-                labelText: 'Approximate Weight (kg)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.scale),
-              ),
-              keyboardType: TextInputType.numberWithOptions(decimal: true),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter the approximate weight';
-                }
-                if (double.tryParse(value) == null) {
-                  return 'Please enter a valid number';
-                }
-                return null;
-              },
+            items: _wasteTypes.map((type) {
+              return DropdownMenuItem(
+                value: type['value'],
+                child: Text(type['label']!),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() {
+                _selectedWasteType = value;
+              });
+            },
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please select a waste type';
+              }
+              return null;
+            },
+          ),
+          SizedBox(height: 16),
+          TextFormField(
+            controller: _noteController,
+            decoration: InputDecoration(
+              labelText: 'Notes (optional)',
+              border: OutlineInputBorder(),
             ),
-            SizedBox(height: 16),
-
-            // Note
-            TextFormField(
-              controller: _noteController,
-              decoration: InputDecoration(
-                labelText: 'Note (Optional)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.note),
-              ),
-              maxLines: 3,
+            maxLines: 3,
+          ),
+          SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: _isSubmitting ? null : _handleSubmit,
+              child: _isSubmitting
+                  ? CircularProgressIndicator(color: Colors.white)
+                  : Text('Submit'),
             ),
-            SizedBox(height: 24),
-
-            // Submit Button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isSubmitting ? null : _submitWasteLog,
-                child: Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text(_isSubmitting ? 'Submitting...' : 'Submit Waste Log'),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).primaryColor,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildQRScanner() {
-    return Column(
-      children: [
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 16),
-          child: Text(
-            'Scan QR code at drop-off point',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[700],
-              fontWeight: FontWeight.w500,
+    if (!_hasCameraPermission) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.camera_alt_outlined, size: 48, color: Colors.grey),
+            SizedBox(height: 16),
+            Text(
+              'Camera permission is required',
+              style: TextStyle(fontSize: 16),
             ),
-          ),
-        ),
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: MobileScanner(
-              controller: _scannerController,
-              onDetect: (capture) {
-                final List<Barcode> barcodes = capture.barcodes;
-                for (final barcode in barcodes) {
-                  _handleQRCode(barcode.rawValue ?? '');
-                }
+            SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () async {
+                final status = await Permission.camera.request();
+                setState(() {
+                  _hasCameraPermission = status.isGranted;
+                });
               },
-              errorBuilder: (context, error, child) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.error, color: Colors.red, size: 48),
-                      SizedBox(height: 16),
-                      Text(
-                        'Camera error: ${error.errorCode}',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    ],
-                  ),
-                );
-              },
+              child: Text('Grant Permission'),
             ),
-          ),
+          ],
         ),
-        SizedBox(height: 16),
-        if (!kIsWeb && (Platform.isAndroid || Platform.isIOS))
-          ElevatedButton.icon(
-            onPressed: () => _scannerController.toggleTorch(),
-            icon: Icon(Icons.flash_on),
-            label: Text('Toggle Flash'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).primaryColor,
-              foregroundColor: Colors.white,
-            ),
-          ),
-      ],
-    );
-  }
-
-  void _handleQRCode(String code) {
-    // TODO: Implement QR code handling
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('QR Code scanned: $code')),
-    );
-  }
-
-  Future<void> _submitWasteLog() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isSubmitting = true);
-      
-      try {
-        final authService = Provider.of<AuthService>(context, listen: false);
-        final user = authService.currentUser;
-        
-        if (user == null) {
-          throw Exception('User not logged in');
-        }
-
-        await FirebaseFirestore.instance.collection('waste_logs').add({
-          'userId': user.uid,
-          'dropOffPointId': _selectedLocation,
-          'weight': double.parse(_weightController.text),
-          'wasteType': _selectedWasteType,
-          'timestamp': FieldValue.serverTimestamp(),
-          'imageUrl': '',
-          'status': 'pending',
-          'note': _noteController.text,
-        });
-
-        // Reset form
-        _weightController.clear();
-        _noteController.clear();
-        setState(() {
-          _selectedDate = DateTime.now();
-          _selectedLocation = null;
-          _selectedWasteType = null;
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Waste log submitted successfully')),
-        );
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to submit waste log'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      } finally {
-        setState(() => _isSubmitting = false);
-      }
+      );
     }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: MobileScanner(
+        controller: _scannerController,
+        onDetect: (capture) {
+          final List<Barcode> barcodes = capture.barcodes;
+          for (final barcode in barcodes) {
+            // Handle QR code data
+            debugPrint('Barcode found! ${barcode.rawValue}');
+          }
+        },
+      ),
+    );
   }
 }

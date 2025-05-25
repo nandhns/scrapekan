@@ -5,8 +5,12 @@ import '../main_screen.dart';
 import 'register_screen.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../utils/data_seeder.dart';
+import '../../config/app_config.dart';
+import '../../scripts/seed_machine_data.dart';
 
 class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
   @override
   _LoginScreenState createState() => _LoginScreenState();
 }
@@ -17,9 +21,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
-  int _logoTaps = 0;
-  bool _showDevMode = false;
-  bool _isSeeding = false;
+  int _logoTapCount = 0;
+  final int _requiredTapsForDevMode = 7;
 
   @override
   void initState() {
@@ -28,44 +31,35 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _handleLogoTap() {
     setState(() {
-      _logoTaps++;
-      if (_logoTaps >= 7) {
-        _showDevMode = true;
-      }
-    });
-
-    // Reset tap count after 3 seconds of inactivity
-    Future.delayed(Duration(seconds: 3), () {
-      if (mounted && _logoTaps < 7) {
-        setState(() {
-          _logoTaps = 0;
-        });
+      _logoTapCount++;
+      if (_logoTapCount >= _requiredTapsForDevMode) {
+        if (!AppConfig.isDevelopment) {
+          AppConfig.enableDevelopmentMode();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Developer mode enabled'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        _logoTapCount = 0; // Reset counter
       }
     });
   }
 
   Future<void> _seedData() async {
-    if (_isSeeding) return;
-
-    setState(() {
-      _isSeeding = true;
-    });
-
+    setState(() => _isLoading = true);
     try {
-      final seeder = DataSeeder();
-      await seeder.seedAllData();
-      
-      if (!mounted) return;
-      
+      final seeder = MachineDataSeeder();
+      await seeder.seedMachineData();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Test data seeded successfully!'),
+          content: Text('Machine data seeded successfully'),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
-      if (!mounted) return;
-      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error seeding data: $e'),
@@ -73,11 +67,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isSeeding = false;
-        });
-      }
+      setState(() => _isLoading = false);
     }
   }
 
@@ -195,7 +185,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       },
                   child: Text('Don\'t have an account? Register'),
                 ),
-                if (_showDevMode) ...[
+                if (AppConfig.isDevelopment) ...[
                   Divider(height: 32),
                   Text(
                     'Developer Mode',
@@ -206,16 +196,33 @@ class _LoginScreenState extends State<LoginScreen> {
                     textAlign: TextAlign.center,
                   ),
                   SizedBox(height: 8),
-                  _isSeeding
+                  _isLoading
                     ? Center(child: CircularProgressIndicator())
                     : TextButton.icon(
                         onPressed: _seedData,
                         icon: Icon(Icons.data_array),
-                        label: Text('Seed Test Data'),
+                        label: Text('Seed Machine Data'),
                         style: TextButton.styleFrom(
                           foregroundColor: Colors.grey[700],
                         ),
                       ),
+                  SizedBox(height: 16),
+                  TextButton(
+                    onPressed: () {
+                      AppConfig.disableDevelopmentMode();
+                      setState(() {});
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Developer mode disabled'),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    },
+                    child: Text('Disable Developer Mode'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.red,
+                    ),
+                  ),
                 ],
                 SizedBox(height: 16),
               ],

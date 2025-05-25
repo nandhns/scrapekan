@@ -9,6 +9,10 @@ class UserModel {
   final String? address;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final bool isActive;
+  final int points;
+  final double totalWaste;
+  final double totalCompost;
 
   UserModel({
     required this.id,
@@ -19,6 +23,10 @@ class UserModel {
     this.address,
     required this.createdAt,
     required this.updatedAt,
+    required this.isActive,
+    required this.points,
+    required this.totalWaste,
+    required this.totalCompost,
   });
 
   factory UserModel.fromMap(Map<String, dynamic> data, String id) {
@@ -31,6 +39,10 @@ class UserModel {
       address: data['address'],
       createdAt: (data['createdAt'] as Timestamp).toDate(),
       updatedAt: (data['updatedAt'] as Timestamp).toDate(),
+      isActive: data['isActive'] ?? true,
+      points: data['points'] ?? 0,
+      totalWaste: (data['totalWaste'] ?? 0).toDouble(),
+      totalCompost: (data['totalCompost'] ?? 0).toDouble(),
     );
   }
 
@@ -43,6 +55,10 @@ class UserModel {
       'address': address,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
+      'isActive': isActive,
+      'points': points,
+      'totalWaste': totalWaste,
+      'totalCompost': totalCompost,
     };
   }
 
@@ -55,6 +71,10 @@ class UserModel {
     String? address,
     DateTime? createdAt,
     DateTime? updatedAt,
+    bool? isActive,
+    int? points,
+    double? totalWaste,
+    double? totalCompost,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -65,6 +85,10 @@ class UserModel {
       address: address ?? this.address,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      isActive: isActive ?? this.isActive,
+      points: points ?? this.points,
+      totalWaste: totalWaste ?? this.totalWaste,
+      totalCompost: totalCompost ?? this.totalCompost,
     );
   }
 } 

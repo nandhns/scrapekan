@@ -6,7 +6,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'dart:js' as js;
 import '../../config/api_keys.dart';
 
 class HomeMap extends StatefulWidget {
@@ -77,30 +76,8 @@ class _HomeMapState extends State<HomeMap> {
   @override
   void initState() {
     super.initState();
-    if (kIsWeb) {
-      // Check if Google Maps is already loaded
-      if (!js.context.hasProperty('google')) {
-        // Load Google Maps JavaScript API
-        final script = js.context['document'].callMethod('createElement', ['script']);
-        script['src'] = 'https://maps.googleapis.com/maps/api/js?key=${ApiKeys.googleMapsApiKey}';
-        script['type'] = 'text/javascript';
-        js.context['document']['head'].callMethod('appendChild', [script]);
-        
-        // Wait for the API to load
-        js.context['window'].addEventListener('load', (event) {
-          if (mounted) {
-            _getCurrentLocation();
-            _initializeMarkers();
-          }
-        });
-      } else {
-        _getCurrentLocation();
-        _initializeMarkers();
-      }
-    } else {
-      _getCurrentLocation();
-      _initializeMarkers();
-    }
+    _getCurrentLocation();
+    _initializeMarkers();
   }
 
   Future<void> _getCurrentLocation() async {
@@ -140,13 +117,15 @@ class _HomeMapState extends State<HomeMap> {
         _isLoading = false;
       });
 
-      final GoogleMapController controller = await _controller.future;
-      controller.animateCamera(
-        CameraUpdate.newLatLngZoom(
-          LatLng(position.latitude, position.longitude),
-          14,
-        ),
-      );
+      if (_controller.isCompleted) {
+        final GoogleMapController controller = await _controller.future;
+        controller.animateCamera(
+          CameraUpdate.newLatLngZoom(
+            LatLng(position.latitude, position.longitude),
+            14,
+          ),
+        );
+      }
       _initializeMarkers();
     } catch (e) {
       setState(() {
@@ -157,31 +136,35 @@ class _HomeMapState extends State<HomeMap> {
   }
 
   void _initializeMarkers() {
-    _markers = _dropoffPoints.map((point) {
-      return Marker(
-        markerId: MarkerId(point.id),
-        position: point.latLng,
-        icon: BitmapDescriptor.defaultMarkerWithHue(
-          point.isOpen ? BitmapDescriptor.hueGreen : BitmapDescriptor.hueRed,
-        ),
-        infoWindow: InfoWindow(
-          title: point.name,
-          snippet: '${point.openingHours} • ${point.capacity} full',
-        ),
-        onTap: () => _onMarkerTapped(point),
-      );
-    }).toSet();
+    if (!mounted) return;
+    
+    setState(() {
+      _markers = _dropoffPoints.map((point) {
+        return Marker(
+          markerId: MarkerId(point.id),
+          position: point.latLng,
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            point.isOpen ? BitmapDescriptor.hueGreen : BitmapDescriptor.hueRed,
+          ),
+          infoWindow: InfoWindow(
+            title: point.name,
+            snippet: '${point.openingHours} • ${point.capacity} full',
+          ),
+          onTap: () => _onMarkerTapped(point),
+        );
+      }).toSet();
 
-    if (_currentPosition != null) {
-      _markers.add(
-        Marker(
-          markerId: MarkerId('current_location'),
-          position: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-          infoWindow: InfoWindow(title: 'Your Location'),
-        ),
-      );
-    }
+      if (_currentPosition != null) {
+        _markers.add(
+          Marker(
+            markerId: MarkerId('current_location'),
+            position: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            infoWindow: InfoWindow(title: 'Your Location'),
+          ),
+        );
+      }
+    });
   }
 
   void _onMarkerTapped(DropoffPoint point) {
@@ -193,30 +176,32 @@ class _HomeMapState extends State<HomeMap> {
   Future<void> _showDirections(DropoffPoint point) async {
     if (_currentPosition == null) return;
 
-    final GoogleMapController controller = await _controller.future;
-    controller.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(
-            _currentPosition!.latitude < point.latLng.latitude
-                ? _currentPosition!.latitude
-                : point.latLng.latitude,
-            _currentPosition!.longitude < point.latLng.longitude
-                ? _currentPosition!.longitude
-                : point.latLng.longitude,
+    if (_controller.isCompleted) {
+      final GoogleMapController controller = await _controller.future;
+      controller.animateCamera(
+        CameraUpdate.newLatLngBounds(
+          LatLngBounds(
+            southwest: LatLng(
+              _currentPosition!.latitude < point.latLng.latitude
+                  ? _currentPosition!.latitude
+                  : point.latLng.latitude,
+              _currentPosition!.longitude < point.latLng.longitude
+                  ? _currentPosition!.longitude
+                  : point.latLng.longitude,
+            ),
+            northeast: LatLng(
+              _currentPosition!.latitude > point.latLng.latitude
+                  ? _currentPosition!.latitude
+                  : point.latLng.latitude,
+              _currentPosition!.longitude > point.latLng.longitude
+                  ? _currentPosition!.longitude
+                  : point.latLng.longitude,
+            ),
           ),
-          northeast: LatLng(
-            _currentPosition!.latitude > point.latLng.latitude
-                ? _currentPosition!.latitude
-                : point.latLng.latitude,
-            _currentPosition!.longitude > point.latLng.longitude
-                ? _currentPosition!.longitude
-                : point.latLng.longitude,
-          ),
+          100,
         ),
-        100,
-      ),
-    );
+      );
+    }
   }
 
   String _getDistanceString(DropoffPoint point) {
@@ -257,7 +242,7 @@ class _HomeMapState extends State<HomeMap> {
     );
 
     if (await canLaunchUrl(url)) {
-      await launchUrl(url);
+      await launchUrl(url, mode: LaunchMode.externalApplication);
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -308,23 +293,33 @@ class _HomeMapState extends State<HomeMap> {
         Expanded(
           child: Stack(
             children: [
-              GoogleMap(
-                onMapCreated: _onMapCreated,
-                initialCameraPosition: _currentPosition != null
-                    ? CameraPosition(
-                        target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-                        zoom: 14,
-                      )
-                    : CameraPosition(
-                        target: _defaultLocation,
-                        zoom: 14,
-                      ),
-                markers: _markers,
-                myLocationEnabled: true,
-                myLocationButtonEnabled: false,
-                zoomControlsEnabled: false,
-                padding: EdgeInsets.only(bottom: 180),
-              ),
+              _isLoading
+                  ? Center(child: CircularProgressIndicator())
+                  : GoogleMap(
+                      onMapCreated: _onMapCreated,
+                      initialCameraPosition: _currentPosition != null
+                          ? CameraPosition(
+                              target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                              zoom: 14,
+                            )
+                          : _initialPosition,
+                      markers: _markers,
+                      myLocationEnabled: true,
+                      myLocationButtonEnabled: true,
+                      zoomControlsEnabled: true,
+                      padding: EdgeInsets.only(bottom: 180),
+                    ),
+              if (_error != null)
+                Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text(
+                      _error!,
+                      style: TextStyle(color: Colors.red),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
               Positioned(
                 left: 16,
                 right: 16,

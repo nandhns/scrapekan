@@ -41,21 +41,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     // Process current period
     for (var doc in currentRequests.docs) {
       final data = doc.data() as Map<String, dynamic>;
-      final region = data['region'] as String;
-      final amount = (data['amount'] as num).toDouble();
-      currentDemand[region] = (currentDemand[region] ?? 0) + amount;
+      final region = data['farmLocationName'] as String? ?? 'Unknown';
+      final quantity = (data['quantity'] as num?)?.toDouble() ?? 0.0;
+      currentDemand[region] = (currentDemand[region] ?? 0) + quantity;
     }
 
     // Process previous period
     for (var doc in previousRequests.docs) {
       final data = doc.data() as Map<String, dynamic>;
-      final region = data['region'] as String;
-      final amount = (data['amount'] as num).toDouble();
-      previousDemand[region] = (previousDemand[region] ?? 0) + amount;
+      final region = data['farmLocationName'] as String? ?? 'Unknown';
+      final quantity = (data['quantity'] as num?)?.toDouble() ?? 0.0;
+      previousDemand[region] = (previousDemand[region] ?? 0) + quantity;
     }
 
     // Find highest demand region
-    String highestDemandRegion = '';
+    String highestDemandRegion = 'No Data';
     double highestDemand = 0;
     double totalDemand = 0;
 
@@ -68,7 +68,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     });
 
     // Calculate highest growth rate
-    String fastestGrowingRegion = '';
+    String fastestGrowingRegion = 'No Data';
     double highestGrowthRate = 0;
 
     currentDemand.forEach((region, currentAmount) {
@@ -81,6 +81,20 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         }
       }
     });
+
+    // Handle case when there's no data
+    if (totalDemand == 0) {
+      return {
+        'highestDemand': {
+          'region': 'No Data',
+          'percentage': '0.0',
+        },
+        'fastestGrowing': {
+          'region': 'No Data',
+          'growth': '0.0',
+        },
+      };
+    }
 
     return {
       'highestDemand': {
@@ -265,13 +279,42 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                   Expanded(
                                     child: LineChart(
                                       LineChartData(
-                                        gridData: FlGridData(show: true),
+                                        gridData: FlGridData(
+                                          show: true,
+                                          drawVerticalLine: true,
+                                          horizontalInterval: 50,
+                                          verticalInterval: 1,
+                                        ),
                                         titlesData: FlTitlesData(
+                                          show: true,
                                           leftTitles: AxisTitles(
                                             sideTitles: SideTitles(
                                               showTitles: true,
+                                              interval: 50,
                                               reservedSize: 40,
+                                              getTitlesWidget: (value, meta) {
+                                                return Text(
+                                                  '${value.toInt()}kg',
+                                                  style: TextStyle(
+                                                    color: Colors.grey[600],
+                                                    fontSize: 12,
+                                                  ),
+                                                );
+                                              },
                                             ),
+                                            axisNameWidget: Text(
+                                              'Quantity (kg)',
+                                              style: TextStyle(
+                                                color: Colors.grey[600],
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ),
+                                          rightTitles: AxisTitles(
+                                            sideTitles: SideTitles(showTitles: false),
+                                          ),
+                                          topTitles: AxisTitles(
+                                            sideTitles: SideTitles(showTitles: false),
                                           ),
                                           bottomTitles: AxisTitles(
                                             sideTitles: SideTitles(
@@ -282,7 +325,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                                     padding: EdgeInsets.only(top: 8),
                                                     child: Text(
                                                       data.labels[value.toInt()],
-                                                      style: TextStyle(fontSize: 10),
+                                                      style: TextStyle(
+                                                        color: Colors.grey[600],
+                                                        fontSize: 10,
+                                                      ),
                                                     ),
                                                   );
                                                 }
@@ -290,9 +336,24 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                               },
                                               reservedSize: 30,
                                             ),
+                                            axisNameWidget: Text(
+                                              'Date',
+                                              style: TextStyle(
+                                                color: Colors.grey[600],
+                                                fontSize: 12,
+                                              ),
+                                            ),
                                           ),
                                         ),
-                                        borderData: FlBorderData(show: true),
+                                        borderData: FlBorderData(
+                                          show: true,
+                                          border: Border(
+                                            bottom: BorderSide(color: Colors.grey[300]!, width: 1),
+                                            left: BorderSide(color: Colors.grey[300]!, width: 1),
+                                          ),
+                                        ),
+                                        minY: 0,
+                                        maxY: (data.maxQuantity ~/ 50 + 1) * 50.0,
                                         lineBarsData: [
                                           LineChartBarData(
                                             spots: data.spots,
@@ -300,7 +361,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                             color: Theme.of(context).primaryColor,
                                             barWidth: 3,
                                             isStrokeCapRound: true,
-                                            dotData: FlDotData(show: false),
+                                            dotData: FlDotData(
+                                              show: true,
+                                              getDotPainter: (spot, percent, barData, index) {
+                                                return FlDotCirclePainter(
+                                                  radius: 4,
+                                                  color: Theme.of(context).primaryColor,
+                                                  strokeWidth: 2,
+                                                  strokeColor: Colors.white,
+                                                );
+                                              },
+                                            ),
                                             belowBarData: BarAreaData(
                                               show: true,
                                               color: Theme.of(context).primaryColor.withOpacity(0.1),
@@ -328,7 +399,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                           ),
                                         ),
                                         Text(
-                                          '35kg',
+                                          '${data.averageRequest.toStringAsFixed(1)}kg',
                                           style: TextStyle(
                                             color: Theme.of(context).primaryColor,
                                             fontWeight: FontWeight.bold,
@@ -512,18 +583,33 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   ChartData _processUsageData(List<QueryDocumentSnapshot> requests) {
     Map<String, double> dailyData = {};
+    double totalQuantity = 0;
+    int totalRequests = requests.length;
+    double maxDailyQuantity = 0;
 
+    // Group by date and calculate daily totals
     for (var doc in requests.reversed) {
       final data = doc.data() as Map<String, dynamic>;
       final date = (data['timestamp'] as Timestamp).toDate();
       final dateStr = DateFormat('dd/MM').format(date);
       final quantity = (data['quantity'] as num?)?.toDouble() ?? 0;
-
+      
+      totalQuantity += quantity;
       dailyData[dateStr] = (dailyData[dateStr] ?? 0) + quantity;
+      
+      // Track maximum daily quantity
+      if (dailyData[dateStr]! > maxDailyQuantity) {
+        maxDailyQuantity = dailyData[dateStr]!;
+      }
     }
 
     final sortedEntries = dailyData.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
+
+    // If we have more than 7 data points, only show the last 7
+    if (sortedEntries.length > 7) {
+      sortedEntries.removeRange(0, sortedEntries.length - 7);
+    }
 
     return ChartData(
       spots: List.generate(
@@ -531,6 +617,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         (index) => FlSpot(index.toDouble(), sortedEntries[index].value),
       ),
       labels: sortedEntries.map((e) => e.key).toList(),
+      averageRequest: totalRequests > 0 ? (totalQuantity / totalRequests) : 0,
+      maxQuantity: maxDailyQuantity,
     );
   }
 }
@@ -538,6 +626,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 class ChartData {
   final List<FlSpot> spots;
   final List<String> labels;
+  final double averageRequest;
+  final double maxQuantity;
 
-  ChartData({required this.spots, required this.labels});
+  ChartData({
+    required this.spots, 
+    required this.labels, 
+    required this.averageRequest,
+    required this.maxQuantity,
+  });
 } 

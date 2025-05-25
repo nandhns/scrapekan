@@ -1,8 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'fertilizer_request_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
+import '../../services/auth_service.dart';
+import '../../theme/app_theme.dart';
 
-class FarmerNotificationsScreen extends StatelessWidget {
+class NotificationType {
+  static const requestApproved = 'REQUEST_APPROVED';
+  static const newStock = 'NEW_STOCK';
+  static const deliveryScheduled = 'DELIVERY_SCHEDULED';
+}
+
+class _NotificationData {
+  final IconData icon;
+  final Color color;
+
+  _NotificationData(this.icon, this.color);
+}
+
+class FarmerNotificationsScreen extends StatefulWidget {
+  @override
+  _FarmerNotificationsScreenState createState() => _FarmerNotificationsScreenState();
+}
+
+class _FarmerNotificationsScreenState extends State<FarmerNotificationsScreen> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  final Map<String, _NotificationData> _notificationTypes = {
+    NotificationType.requestApproved: _NotificationData(
+      Icons.check_circle_outline,
+      Colors.green,
+    ),
+    NotificationType.newStock: _NotificationData(
+      Icons.inventory_2_outlined,
+      Colors.blue,
+    ),
+    NotificationType.deliveryScheduled: _NotificationData(
+      Icons.local_shipping_outlined,
+      Colors.orange,
+    ),
+  };
+
   String _timeAgo(DateTime dateTime) {
     final now = DateTime.now();
     final difference = now.difference(dateTime);
@@ -20,64 +60,176 @@ class FarmerNotificationsScreen extends StatelessWidget {
     }
   }
 
+  Stream<QuerySnapshot> _getNotifications() {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return Stream.empty();
+
+    return _firestore
+        .collection('notifications')
+        .where('userId', isEqualTo: userId)
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+  }
+
+  Future<void> _markAsRead(String notificationId) async {
+    try {
+      await _firestore
+          .collection('notifications')
+          .doc(notificationId)
+          .update({'isRead': true});
+    } catch (e) {
+      print('Error marking notification as read: $e');
+    }
+  }
+
+  Future<void> _markAllAsRead() async {
+    try {
+      final userId = _auth.currentUser?.uid;
+      if (userId == null) return;
+
+      final batch = _firestore.batch();
+      final unreadNotifications = await _firestore
+          .collection('notifications')
+          .where('userId', isEqualTo: userId)
+          .where('isRead', isEqualTo: false)
+          .get();
+
+      for (var doc in unreadNotifications.docs) {
+        batch.update(doc.reference, {'isRead': true});
+      }
+
+      await batch.commit();
+    } catch (e) {
+      print('Error marking all notifications as read: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Notifications')),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      body: StreamBuilder<QuerySnapshot>(
+        stream: _getNotifications(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Text('Error: ${snapshot.error}'),
+            );
+          }
+
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
+          final notifications = snapshot.data?.docs ?? [];
+
+          return Column(
             children: [
-              Text(
-                'Notifications',
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Stay updated on your fertilizer requests',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Colors.grey[600],
-                ),
-              ),
-              SizedBox(height: 24),
-              
               Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.1),
-                      spreadRadius: 1,
-                      blurRadius: 10,
-                      offset: Offset(0, 2),
+                color: Colors.white,
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Notifications',
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Stay updated on your fertilizer requests',
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: Colors.grey[600],
+                      ),
                     ),
                   ],
                 ),
-                padding: EdgeInsets.all(20),
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  physics: NeverScrollableScrollPhysics(),
-                  itemCount: _dummyNotifications.length,
-                  separatorBuilder: (context, index) => Divider(height: 32),
-                  itemBuilder: (context, index) {
-                    final notification = _dummyNotifications[index];
-                    return _NotificationItem(
-                      title: notification['title']!,
-                      message: notification['message']!,
-                      time: notification['time']!,
-                      isRead: notification['isRead'] as bool,
-                    );
-                  },
+              ),
+              Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Recent Notifications',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _markAllAsRead,
+                      child: Text(
+                        'Mark all as read',
+                        style: TextStyle(
+                          color: AppTheme.buttonColor,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              
+              if (notifications.isEmpty)
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.notifications_none,
+                          size: 64,
+                          color: Colors.grey[400],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No notifications yet',
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Expanded(
+                  child: ListView.separated(
+                    padding: EdgeInsets.all(16),
+                    itemCount: notifications.length,
+                    separatorBuilder: (context, index) => Divider(height: 32),
+                    itemBuilder: (context, index) {
+                      final notification = notifications[index];
+                      final data = notification.data() as Map<String, dynamic>;
+                      
+                      if (!data['isRead']) {
+                        _markAsRead(notification.id);
+                      }
+
+                      final type = data['type'] as String? ?? NotificationType.requestApproved;
+                      final notificationData = _notificationTypes[type] ?? 
+                          _NotificationData(Icons.notifications_outlined, Colors.grey);
+
+                      return _NotificationItem(
+                        title: data['title'] ?? '',
+                        message: data['message'] ?? '',
+                        time: _timeAgo(data['createdAt'].toDate()),
+                        isRead: data['isRead'] ?? false,
+                        icon: notificationData.icon,
+                        iconColor: notificationData.color,
+                      );
+                    },
+                  ),
+                ),
             ],
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -88,12 +240,16 @@ class _NotificationItem extends StatelessWidget {
   final String message;
   final String time;
   final bool isRead;
+  final IconData icon;
+  final Color iconColor;
 
   const _NotificationItem({
     required this.title,
     required this.message,
     required this.time,
     required this.isRead,
+    required this.icon,
+    required this.iconColor,
   });
 
   @override
@@ -102,12 +258,17 @@ class _NotificationItem extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 12,
-          height: 12,
-          margin: EdgeInsets.only(top: 4, right: 12),
+          width: 40,
+          height: 40,
+          margin: EdgeInsets.only(right: 12),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: isRead ? Colors.grey[300] : Theme.of(context).primaryColor,
+            color: iconColor.withOpacity(0.1),
+          ),
+          child: Icon(
+            icon,
+            color: iconColor,
+            size: 24,
           ),
         ),
         Expanded(
@@ -119,6 +280,7 @@ class _NotificationItem extends StatelessWidget {
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
+                  color: isRead ? Colors.grey[600] : Colors.black,
                 ),
               ),
               SizedBox(height: 4),
@@ -139,29 +301,16 @@ class _NotificationItem extends StatelessWidget {
             ],
           ),
         ),
+        if (!isRead)
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppTheme.buttonColor,
+            ),
+          ),
       ],
     );
   }
-}
-
-// Dummy data for notifications
-final List<Map<String, dynamic>> _dummyNotifications = [
-  {
-    'title': 'Fertilizer Request Approved',
-    'message': 'Your request for 50kg of organic fertilizer has been approved.',
-    'time': '2 hours ago',
-    'isRead': false,
-  },
-  {
-    'title': 'Delivery Scheduled',
-    'message': 'Your fertilizer will be delivered on Monday, March 15th.',
-    'time': '1 day ago',
-    'isRead': true,
-  },
-  {
-    'title': 'New Batch Available',
-    'message': 'A new batch of premium compost is now available for request.',
-    'time': '2 days ago',
-    'isRead': true,
-  },
-]; 
+} 

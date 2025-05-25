@@ -349,20 +349,66 @@ class _DeliveryConfirmationScreenState extends State<DeliveryConfirmationScreen>
 
   Future<void> _confirmDelivery(BuildContext context, String deliveryId) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('fertilizer_deliveries')
+      // Start a batch write
+      final batch = FirebaseFirestore.instance.batch();
+      
+      // Get the request document
+      final requestDoc = await FirebaseFirestore.instance
+          .collection('fertilizer_requests')
           .doc(deliveryId)
-          .update({
-        'status': 'confirmed',
-        'confirmedAt': FieldValue.serverTimestamp(),
+          .get();
+
+      if (!requestDoc.exists) {
+        throw 'Request not found';
+      }
+
+      final requestData = requestDoc.data()!;
+      final farmerId = requestData['farmerId'];
+      final quantity = requestData['quantity'];
+
+      // Update the request status
+      batch.update(
+        FirebaseFirestore.instance.collection('fertilizer_requests').doc(deliveryId),
+        {
+          'status': 'delivered',
+          'confirmedAt': FieldValue.serverTimestamp(),
+          'deliveredAt': FieldValue.serverTimestamp(),
+          'deliveredQuantity': quantity,
+        }
+      );
+
+      // Create a notification for the farmer
+      final notificationRef = FirebaseFirestore.instance.collection('notifications').doc();
+      batch.set(notificationRef, {
+        'userId': farmerId,
+        'type': 'REQUEST_APPROVED',
+        'title': 'Fertilizer Delivery Completed',
+        'message': 'Your request for ${quantity}kg of fertilizer has been delivered.',
+        'createdAt': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'requestId': deliveryId
       });
 
+      // Commit the batch
+      await batch.commit();
+
+      if (!context.mounted) return;
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Delivery confirmed successfully')),
+        SnackBar(
+          content: Text('Delivery confirmed and marked as delivered'),
+          backgroundColor: Colors.green,
+        ),
       );
     } catch (e) {
+      print('Error confirming delivery: $e');
+      if (!context.mounted) return;
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error confirming delivery: $e')),
+        SnackBar(
+          content: Text('Error confirming delivery: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -391,24 +437,63 @@ class _DeliveryConfirmationScreenState extends State<DeliveryConfirmationScreen>
 
     if (selectedDate != null) {
       try {
-        await FirebaseFirestore.instance
+        // Start a batch write
+        final batch = FirebaseFirestore.instance.batch();
+
+        // Get the request document
+        final requestDoc = await FirebaseFirestore.instance
             .collection('fertilizer_requests')
             .doc(deliveryId)
-            .update({
-          'deliveryDate': Timestamp.fromDate(selectedDate),
-          'rescheduledAt': FieldValue.serverTimestamp(),
+            .get();
+
+        if (!requestDoc.exists) {
+          throw 'Request not found';
+        }
+
+        final requestData = requestDoc.data()!;
+        final farmerId = requestData['farmerId'];
+
+        // Update the request
+        batch.update(
+          FirebaseFirestore.instance.collection('fertilizer_requests').doc(deliveryId),
+          {
+            'deliveryDate': Timestamp.fromDate(selectedDate),
+            'rescheduledAt': FieldValue.serverTimestamp(),
+          }
+        );
+
+        // Create a notification for the farmer
+        final notificationRef = FirebaseFirestore.instance.collection('notifications').doc();
+        batch.set(notificationRef, {
+          'userId': farmerId,
+          'type': 'DELIVERY_SCHEDULED',
+          'title': 'Delivery Rescheduled',
+          'message': 'Your delivery has been rescheduled to ${DateFormat('MMM d, y').format(selectedDate)}.',
+          'createdAt': FieldValue.serverTimestamp(),
+          'isRead': false,
+          'requestId': deliveryId
         });
+
+        // Commit the batch
+        await batch.commit();
 
         if (!context.mounted) return;
         
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Delivery rescheduled successfully')),
+          SnackBar(
+            content: Text('Delivery rescheduled successfully'),
+            backgroundColor: Colors.green,
+          ),
         );
       } catch (e) {
+        print('Error rescheduling delivery: $e');
         if (!context.mounted) return;
         
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error rescheduling delivery: $e')),
+          SnackBar(
+            content: Text('Error rescheduling delivery: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }

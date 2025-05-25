@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import '../../scripts/seed_machine_data.dart';
+import '../../config/app_config.dart';
 
 class MachineMonitoringScreen extends StatefulWidget {
   @override
@@ -9,15 +11,363 @@ class MachineMonitoringScreen extends StatefulWidget {
 }
 
 class _MachineMonitoringScreenState extends State<MachineMonitoringScreen> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: SingleChildScrollView(
-          physics: ClampingScrollPhysics(),
-          padding: EdgeInsets.all(16),
+        child: StreamBuilder<QuerySnapshot>(
+          stream: _firestore.collection('machines').snapshots(),
+          builder: (context, machinesSnapshot) {
+            if (machinesSnapshot.hasError) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline, size: 48, color: Colors.red),
+                    SizedBox(height: 16),
+                    Text(
+                      'Error loading machines',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                    if (AppConfig.isDevelopment)
+                      Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text(
+                          machinesSnapshot.error.toString(),
+                          style: TextStyle(fontSize: 12),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            }
+
+            if (!machinesSnapshot.hasData) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Theme.of(context).primaryColor,
+                      ),
+                    ),
+                    SizedBox(height: 16),
+                    Text('Loading machines...'),
+                  ],
+                ),
+              );
+            }
+
+            if (machinesSnapshot.data!.docs.isEmpty) {
+              return SingleChildScrollView(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildHeader(),
+                    SizedBox(height: 32),
+                    Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.precision_manufacturing_outlined,
+                            size: 64,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'No machines found',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          if (AppConfig.isDevelopment)
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                try {
+                                  final seeder = MachineDataSeeder();
+                                  await seeder.seedMachineData();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Machine data seeded successfully')),
+                                  );
+                                } catch (e) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Error seeding data: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              },
+                              icon: Icon(Icons.add),
+                              label: Text('Add Test Machines'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Theme.of(context).primaryColor,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            // Show the actual content when data is available
+            return SingleChildScrollView(
+              physics: ClampingScrollPhysics(),
+              padding: EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildHeader(),
+                  SizedBox(height: 24),
+                  
+                  // Machine Status Cards
+                  StreamBuilder<QuerySnapshot>(
+                    stream: _firestore.collection('machines').snapshots(),
+                    builder: (context, machinesSnapshot) {
+                      if (machinesSnapshot.hasError) {
+                        return Center(child: Text('Error loading machines'));
+                      }
+
+                      if (!machinesSnapshot.hasData) {
+                        return Center(child: CircularProgressIndicator());
+                      }
+
+                      return Column(
+                        children: machinesSnapshot.data!.docs.map((machineDoc) {
+                          final machineData = machineDoc.data() as Map<String, dynamic>;
+                          return StreamBuilder<QuerySnapshot>(
+                            stream: _firestore
+                                .collection('machine_monitoring')
+                                .where('machineId', isEqualTo: machineDoc.id)
+                                .orderBy('timestamp', descending: true)
+                                .limit(1)
+                                .snapshots(),
+                            builder: (context, monitoringSnapshot) {
+                              if (!monitoringSnapshot.hasData) {
+                                return SizedBox();
+                              }
+
+                              final monitoringData = monitoringSnapshot.data!.docs.isNotEmpty
+                                  ? monitoringSnapshot.data!.docs.first.data() as Map<String, dynamic>
+                                  : null;
+
+                              if (monitoringData == null) {
+                                return SizedBox();
+                              }
+
+                              final isOperating = monitoringData['isOperating'] as bool;
+                              final temperature = monitoringData['temperature'] as double;
+                              final moisture = monitoringData['moisture'] as double;
+                              final currentCapacity = monitoringData['currentCapacity'] as double;
+                              final processingStatus = monitoringData['processingStatus'] as double;
+                              final maxCapacity = machineData['capacity'] as double;
+
+                              return Column(
+                                children: [
+                                  _buildMachineStatusCard(
+                                    machineName: machineData['name'] as String,
+                                    status: isOperating ? 'Operating normally' : 'Maintenance Required',
+                                    statusColor: isOperating ? Colors.green : Colors.red,
+                                    metrics: [
+                                      _MachineMetric(
+                                        'Temperature',
+                                        '${temperature.toStringAsFixed(1)}°C',
+                                        temperature / 100,
+                                        temperature > 70 ? 'High' : temperature < 40 ? 'Low' : 'Normal',
+                                        temperature > 70 ? Colors.red : temperature < 40 ? Colors.blue : Colors.orange,
+                                        '40°C - 70°C',
+                                      ),
+                                      _MachineMetric(
+                                        'Moisture',
+                                        '${moisture.toStringAsFixed(1)}%',
+                                        moisture / 100,
+                                        moisture > 60 ? 'High' : moisture < 30 ? 'Low' : 'Normal',
+                                        moisture > 60 ? Colors.red : moisture < 30 ? Colors.orange : Colors.blue,
+                                        '30% - 60%',
+                                      ),
+                                      _MachineMetric(
+                                        'Capacity',
+                                        '${(currentCapacity / maxCapacity * 100).toStringAsFixed(1)}%',
+                                        currentCapacity / maxCapacity,
+                                        currentCapacity > maxCapacity * 0.9 ? 'Full' : 'Good',
+                                        currentCapacity > maxCapacity * 0.9 ? Colors.red : Colors.green,
+                                        '${currentCapacity.toStringAsFixed(0)}kg/${maxCapacity.toStringAsFixed(0)}kg',
+                                      ),
+                                      _MachineMetric(
+                                        'Processing',
+                                        '${processingStatus.toStringAsFixed(1)}%',
+                                        processingStatus / 100,
+                                        processingStatus > 0 ? 'Active' : 'Stopped',
+                                        processingStatus > 0 ? Colors.purple : Colors.red,
+                                        isOperating ? 'Running' : 'Maintenance',
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: 24),
+                                ],
+                              );
+                            },
+                          );
+                        }).toList(),
+                      );
+                    },
+                  ),
+                  
+                  // Maintenance Schedule
+                  StreamBuilder<QuerySnapshot>(
+                    stream: _firestore.collection('machines').snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return Center(child: CircularProgressIndicator());
+                      }
+
+                      return Card(
+                        elevation: 4,
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Maintenance Schedule',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: 16),
+                              ...snapshot.data!.docs.map((doc) {
+                                final data = doc.data() as Map<String, dynamic>;
+                                final nextMaintenance = (data['nextMaintenance'] as Timestamp).toDate();
+                                final daysUntil = nextMaintenance.difference(DateTime.now()).inDays;
+                                
+                                return Column(
+                                  children: [
+                                    _buildMaintenanceItem(
+                                      data['name'] as String,
+                                      'Regular maintenance check',
+                                      daysUntil <= 0 ? 'High priority' : 'Normal priority',
+                                      daysUntil <= 0 ? Colors.red : Colors.blue,
+                                      daysUntil <= 0 ? 'Due today' : 'Due in $daysUntil days',
+                                    ),
+                                    if (doc.id != snapshot.data!.docs.last.id) Divider(),
+                                  ],
+                                );
+                              }).toList(),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  SizedBox(height: 24),
+                  
+                  // Maintenance Alerts
+                  StreamBuilder<QuerySnapshot>(
+                    stream: _firestore
+                        .collection('maintenance_alerts')
+                        .where('status', isEqualTo: 'OPEN')
+                        .orderBy('timestamp', descending: true)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return Center(child: CircularProgressIndicator());
+                      }
+
+                      if (snapshot.data!.docs.isEmpty) {
+                        return Card(
+                          elevation: 4,
+                          child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Maintenance Alerts',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                SizedBox(height: 16),
+                                Center(
+                                  child: Text(
+                                    'No active alerts',
+                                    style: TextStyle(color: Colors.grey[600]),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+
+                      return Card(
+                        elevation: 4,
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Maintenance Alerts',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: 16),
+                              ...snapshot.data!.docs.map((doc) {
+                                final data = doc.data() as Map<String, dynamic>;
+                                final timestamp = (data['timestamp'] as Timestamp).toDate();
+                                final hoursAgo = DateTime.now().difference(timestamp).inHours;
+                                
+                                return Column(
+                                  children: [
+                                    _buildAlertItem(
+                                      data['machineId'] as String,
+                                      data['message'] as String,
+                                      data['type'] as String,
+                                      data['type'] == 'CRITICAL' ? Colors.red : Colors.orange,
+                                      '$hoursAgo hours ago',
+                                    ),
+                                    if (doc.id != snapshot.data!.docs.last.id) Divider(),
+                                  ],
+                                );
+                              }).toList(),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'Compost Machine Monitoring',
@@ -32,46 +382,35 @@ class _MachineMonitoringScreenState extends State<MachineMonitoringScreen> {
                   color: Colors.grey[600],
                 ),
               ),
-              SizedBox(height: 24),
-              
-              // Machine 01 Status
-              _buildMachineStatusCard(
-                machineName: 'Machine 01 - Pasar Tani Kekal Pekan',
-                status: 'Operating normally',
-                statusColor: Colors.green,
-                metrics: [
-                  _MachineMetric('Temperature', '65°C', 0.65, 'Normal', Colors.orange, '40°C - 70°C'),
-                  _MachineMetric('Moisture', '45%', 0.45, 'Normal', Colors.blue, '30% - 60%'),
-                  _MachineMetric('Capacity', '75%', 0.75, 'Good', Colors.green, '150kg/200kg'),
-                  _MachineMetric('Processing', '80%', 0.80, 'Active', Colors.purple, 'Batch #245'),
-                ],
-              ),
-              SizedBox(height: 24),
-              
-              // Machine 02 Status (Requires Maintenance)
-              _buildMachineStatusCard(
-                machineName: 'Machine 02 - Pasar Tani Kekal Pekan',
-                status: 'Maintenance Required',
-                statusColor: Colors.red,
-                metrics: [
-                  _MachineMetric('Temperature', '85°C', 0.85, 'High', Colors.red, '40°C - 70°C'),
-                  _MachineMetric('Moisture', '25%', 0.25, 'Low', Colors.orange, '30% - 60%'),
-                  _MachineMetric('Capacity', '90%', 0.90, 'Full', Colors.blue, '180kg/200kg'),
-                  _MachineMetric('Processing', '0%', 0.0, 'Stopped', Colors.red, 'Maintenance'),
-                ],
-              ),
-              SizedBox(height: 24),
-              
-              // Maintenance Schedule
-              _buildMaintenanceSchedule(),
-              SizedBox(height: 24),
-              
-              // Maintenance Alerts
-              _buildMaintenanceAlerts(),
             ],
           ),
         ),
-      ),
+        if (AppConfig.isDevelopment)
+          ElevatedButton.icon(
+            onPressed: () async {
+              try {
+                final seeder = MachineDataSeeder();
+                await seeder.seedMachineData();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Machine data seeded successfully')),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error seeding data: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            icon: Icon(Icons.data_array),
+            label: Text('Seed Data'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.grey[700],
+              foregroundColor: Colors.white,
+            ),
+          ),
+      ],
     );
   }
 
@@ -234,43 +573,6 @@ class _MachineMonitoringScreenState extends State<MachineMonitoringScreen> {
     );
   }
 
-  Widget _buildMaintenanceSchedule() {
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Maintenance Schedule',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 16),
-            _buildMaintenanceItem(
-              'Machine 02 - Pasar Tani Kekal Pekan',
-              'Temperature sensor calibration',
-              'High priority',
-              Colors.red,
-              'Due today',
-            ),
-            Divider(),
-            _buildMaintenanceItem(
-              'Machine 01 - Pasar Tani Kekal Pekan',
-              'Regular maintenance check',
-              'Normal priority',
-              Colors.blue,
-              'Due in 5 days',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildMaintenanceItem(
     String machine,
     String task,
@@ -325,43 +627,6 @@ class _MachineMonitoringScreenState extends State<MachineMonitoringScreen> {
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildMaintenanceAlerts() {
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Maintenance Alerts',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 16),
-            _buildAlertItem(
-              'Machine 02 - Pasar Tani Kekal Pekan',
-              'Temperature sensor malfunction detected',
-              'Critical',
-              Colors.red,
-              '2 hours ago',
-            ),
-            Divider(),
-            _buildAlertItem(
-              'Machine 02 - Pasar Tani Kekal Pekan',
-              'Moisture levels below normal range',
-              'Warning',
-              Colors.orange,
-              '3 hours ago',
-            ),
-          ],
-        ),
       ),
     );
   }

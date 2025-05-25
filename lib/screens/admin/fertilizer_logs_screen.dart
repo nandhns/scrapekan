@@ -13,7 +13,7 @@ class FertilizerLogsScreen extends StatelessWidget {
 
     final deliveryStream = FirebaseFirestore.instance
         .collection('fertilizer_requests')
-        .where('status', isEqualTo: 'delivered')
+        .where('status', whereIn: ['delivered', 'confirmed'])
         .snapshots();
 
     // Combine both streams
@@ -30,7 +30,9 @@ class FertilizerLogsScreen extends StatelessWidget {
         num totalDelivered = 0;
         for (var doc in deliveries.docs) {
           final data = doc.data() as Map<String, dynamic>;
-          totalDelivered += data['quantity'] as num? ?? 0;
+          if (data['status'] == 'delivered') {
+            totalDelivered += data['deliveredQuantity'] as num? ?? data['quantity'] as num? ?? 0;
+          }
         }
 
         return {

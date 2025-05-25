@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:google_fonts/google_fonts.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_screen.dart';
 import 'services/auth_service.dart';
@@ -12,78 +11,52 @@ import 'services/connectivity_service.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'providers/service_provider.dart';
+import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    // Initialize Firebase first
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    
-    // Platform-specific initialization
     if (kIsWeb) {
-      // Web-specific settings
-      await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
-      await FirebaseFirestore.instance.enablePersistence(
-        const PersistenceSettings(synchronizeTabs: true),
-      ).catchError((e) {
-        print('Error enabling Firestore persistence: $e');
-        // Persistence might already be enabled
-        return;
-      });
+      await Firebase.initializeApp(
+        options: FirebaseOptions(
+          apiKey: 'AIzaSyA7tIhvBx5dKcz6NGHXExM7hLNmgs7EOf0',
+          appId: '1:944281165543:web:1bb2b4a37b1c447ffc4c42',
+          messagingSenderId: '944281165543',
+          projectId: 'scrapekan',
+          authDomain: 'scrapekan.firebaseapp.com',
+          storageBucket: 'scrapekan.appspot.com',
+        ),
+      );
     } else {
-      // Android-specific settings
-      FirebaseFirestore.instance.settings = const Settings(
-        persistenceEnabled: true,
-        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
       );
     }
-    
-    // Initialize services after Firebase is ready
+
+    // Initialize Firestore settings
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+
+    // Initialize services
     final authService = await AuthService.create();
     final connectivityService = ConnectivityService();
-    
-    print('Firebase initialized successfully for ${kIsWeb ? 'Web' : 'Android'}');
-    
+
     runApp(MultiProvider(
       providers: [
-        ChangeNotifierProvider<AuthService>.value(
-          value: authService,
-        ),
-        ChangeNotifierProvider<ConnectivityService>.value(
-          value: connectivityService,
-        ),
+        ChangeNotifierProvider<AuthService>.value(value: authService),
+        ChangeNotifierProvider<ConnectivityService>.value(value: connectivityService),
       ],
-      child: const MyApp(),
+      child: MyApp(),
     ));
-    
   } catch (e) {
     print('Error initializing Firebase: $e');
     runApp(MaterialApp(
       home: Scaffold(
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.error_outline, color: Colors.red, size: 48),
-              SizedBox(height: 16),
-              Text(
-                'Error initializing app',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 8),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 24),
-                child: Text(
-                  e.toString(),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.red),
-                ),
-              ),
-            ],
-          ),
+          child: Text('Error initializing app: $e'),
         ),
       ),
     ));
@@ -91,39 +64,17 @@ Future<void> main() async {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ScrapeKan',
+      title: 'ScraPekan',
       theme: ThemeData(
-        primarySwatch: Colors.green,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-        textTheme: GoogleFonts.notoSansTextTheme(
-          Theme.of(context).textTheme,
-        ).copyWith(
-          // Ensure symbols are covered
-          bodyMedium: TextStyle(
-            fontFamilyFallback: [
-              'Noto Sans Symbols',
-              'Noto Sans Symbols 2',
-            ],
-          ),
-          bodyLarge: TextStyle(
-            fontFamilyFallback: [
-              'Noto Sans Symbols',
-              'Noto Sans Symbols 2',
-            ],
-          ),
-          bodySmall: TextStyle(
-            fontFamilyFallback: [
-              'Noto Sans Symbols',
-              'Noto Sans Symbols 2',
-            ],
-          ),
+        primaryColor: Color(0xFFEFBF04),
+        scaffoldBackgroundColor: Colors.white,
+        appBarTheme: AppBarTheme(
+          backgroundColor: Color(0xFFEFBF04),
+          foregroundColor: Colors.white,
         ),
-        fontFamily: GoogleFonts.notoSans().fontFamily,
       ),
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
