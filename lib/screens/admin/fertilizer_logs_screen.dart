@@ -1,8 +1,98 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:rxdart/rxdart.dart';
 
 class FertilizerLogsScreen extends StatelessWidget {
+  Stream<Map<String, num>> _getProductionData() {
+    // Create streams for both collections
+    final wasteStream = FirebaseFirestore.instance
+        .collection('waste_logs')
+        .where('status', isEqualTo: 'processed')
+        .snapshots();
+
+    final deliveryStream = FirebaseFirestore.instance
+        .collection('fertilizer_requests')
+        .where('status', isEqualTo: 'delivered')
+        .snapshots();
+
+    // Combine both streams
+    return Rx.combineLatest2(
+      wasteStream,
+      deliveryStream,
+      (QuerySnapshot wasteLogs, QuerySnapshot deliveries) {
+        num totalProduced = 0;
+        for (var doc in wasteLogs.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          totalProduced += data['weight'] as num? ?? 0;
+        }
+
+        num totalDelivered = 0;
+        for (var doc in deliveries.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          totalDelivered += data['quantity'] as num? ?? 0;
+        }
+
+        return {
+          'produced': totalProduced,
+          'delivered': totalDelivered,
+          'available': totalProduced - totalDelivered,
+        };
+      },
+    );
+  }
+
+  Widget _buildProductionOverview() {
+    return StreamBuilder<Map<String, num>>(
+      stream: _getProductionData(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Text('Error: ${snapshot.error}');
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator());
+        }
+
+        final data = snapshot.data ?? {'produced': 0, 'delivered': 0, 'available': 0};
+        
+        return Row(
+          children: [
+            Expanded(
+              child: _buildOverviewBox(
+                context,
+                'Total Produced',
+                data['produced']!,
+                Icons.inventory,
+                Colors.blue,
+              ),
+            ),
+            SizedBox(width: 16),
+            Expanded(
+              child: _buildOverviewBox(
+                context,
+                'Delivered',
+                data['delivered']!,
+                Icons.local_shipping,
+                Colors.green,
+              ),
+            ),
+            SizedBox(width: 16),
+            Expanded(
+              child: _buildOverviewBox(
+                context,
+                'Available',
+                data['available']!,
+                Icons.warehouse,
+                Colors.orange,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -41,65 +131,21 @@ class FertilizerLogsScreen extends StatelessWidget {
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                         SizedBox(height: 16),
-                        StreamBuilder<QuerySnapshot>(
-                          stream: _getProductionStream(),
-                          builder: (context, snapshot) {
-                            if (snapshot.hasError) {
-                              return Text('Error: ${snapshot.error}');
-                            }
-
-                            if (snapshot.connectionState == ConnectionState.waiting) {
-                              return Center(child: CircularProgressIndicator());
-                            }
-
-                            final production = snapshot.data?.docs ?? [];
-                            
-                            if (production.isEmpty) {
-                              return Center(
-                                child: Padding(
-                                  padding: EdgeInsets.all(16),
-                                  child: Text('No production data available'),
-                                ),
-                              );
-                            }
-
-                            return LayoutBuilder(
-                              builder: (context, constraints) {
-                                final isWide = constraints.maxWidth > 600;
-                                return Wrap(
-                                  spacing: 16,
-                                  runSpacing: 16,
-                                  children: production.map((doc) {
-                                    final data = doc.data() as Map<String, dynamic>;
-                                    return SizedBox(
-                                      width: isWide ? (constraints.maxWidth - 48) / 3 : constraints.maxWidth,
-                                      child: _buildProductionCard(
-                                        context,
-                                        data['name'] as String? ?? 'General Purpose Compost',
-                                        data['produced'] as num? ?? 0,
-                                        data['distributed'] as num? ?? 0,
-                                      ),
-                                    );
-                                  }).toList(),
-                                );
-                              },
-                            );
-                          },
-                        ),
+                        _buildProductionOverview(),
                       ],
                     ),
                   ),
                 ),
                 SizedBox(height: 24),
                 
-                // Distribution History
+                // Recent Transactions
                 Text(
-                  'Distribution History',
+                  'Recent Transactions',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 SizedBox(height: 16),
                 StreamBuilder<QuerySnapshot>(
-                  stream: _getDistributionStream(),
+                  stream: _getTransactionsStream(),
                   builder: (context, snapshot) {
                     if (snapshot.hasError) {
                       return Text('Error: ${snapshot.error}');
@@ -109,13 +155,13 @@ class FertilizerLogsScreen extends StatelessWidget {
                       return Center(child: CircularProgressIndicator());
                     }
 
-                    final distributions = snapshot.data?.docs ?? [];
+                    final transactions = snapshot.data?.docs ?? [];
                     
-                    if (distributions.isEmpty) {
+                    if (transactions.isEmpty) {
                       return Center(
                         child: Padding(
                           padding: EdgeInsets.all(16),
-                          child: Text('No distribution history available'),
+                          child: Text('No transactions available'),
                         ),
                       );
                     }
@@ -123,30 +169,42 @@ class FertilizerLogsScreen extends StatelessWidget {
                     return ListView.builder(
                       shrinkWrap: true,
                       physics: NeverScrollableScrollPhysics(),
-                      itemCount: distributions.length,
+                      itemCount: transactions.length,
                       itemBuilder: (context, index) {
-                        final distribution = distributions[index].data() as Map<String, dynamic>;
-                        final timestamp = distribution['timestamp'] as Timestamp;
-                        final status = distribution['status'] as String? ?? 'completed';
+                        final transaction = transactions[index].data() as Map<String, dynamic>;
+                        final timestamp = transaction['timestamp'] as Timestamp;
+                        final status = transaction['status'] as String? ?? 'pending';
+                        final deliveryDate = (transaction['deliveryDate'] as Timestamp?)?.toDate();
                         
                         return Card(
                           margin: EdgeInsets.only(bottom: 12),
                           child: ListTile(
-                            title: Text(distribution['farmLocation'] ?? 'Unknown Location'),
+                            leading: _buildStatusIcon(status),
+                            title: Text(
+                              'Request by ${transaction['farmerName'] ?? 'Unknown Farmer'}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 SizedBox(height: 4),
                                 Text(
-                                  '${distribution['quantity']}kg • ${distribution['compostType'] ?? 'General Purpose'}',
+                                  '${transaction['quantity']}kg • ${transaction['farmLocationName'] ?? 'Unknown Location'}',
                                   style: TextStyle(
                                     color: Colors.black87,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
                                 SizedBox(height: 2),
+                                if (deliveryDate != null)
+                                  Text(
+                                    'Delivery: ${DateFormat('MMM d, y').format(deliveryDate)}',
+                                    style: TextStyle(color: Colors.grey[600]),
+                                  ),
                                 Text(
-                                  'Distributed: ${DateFormat('MMM d, y').format(timestamp.toDate())}',
+                                  'Requested: ${DateFormat('MMM d, y').format(timestamp.toDate())}',
                                   style: TextStyle(color: Colors.grey[600]),
                                 ),
                               ],
@@ -166,92 +224,93 @@ class FertilizerLogsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildProductionCard(BuildContext context, String name, num produced, num distributed) {
-    final remaining = produced - distributed;
-    final percentage = produced > 0 ? (distributed / produced * 100).clamp(0, 100) : 0.0;
-
+  Widget _buildOverviewBox(
+    BuildContext context,
+    String title,
+    num value,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[100],
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: color.withOpacity(0.2),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            name,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-          SizedBox(height: 16),
-          LinearProgressIndicator(
-            value: percentage / 100,
-            backgroundColor: Colors.grey[200],
-            valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).primaryColor),
+          Row(
+            children: [
+              Icon(
+                icon,
+                color: color,
+                size: 20,
+              ),
+              SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                ),
+              ),
+            ],
           ),
           SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Produced',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
-                ),
-              ),
-              Text(
-                '${produced.toStringAsFixed(0)}kg',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Distributed',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
-                ),
-              ),
-              Text(
-                '${distributed.toStringAsFixed(0)}kg',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).primaryColor,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Remaining',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
-                ),
-              ),
-              Text(
-                '${remaining.toStringAsFixed(0)}kg',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: remaining > 0 ? Colors.orange : Colors.red,
-                ),
-              ),
-            ],
+          Text(
+            '${value.toStringAsFixed(0)}kg',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildStatusIcon(String status) {
+    IconData iconData;
+    Color color;
+    
+    switch (status.toLowerCase()) {
+      case 'delivered':
+        iconData = Icons.check_circle;
+        color = Colors.green;
+        break;
+      case 'processing':
+        iconData = Icons.pending;
+        color = Colors.blue;
+        break;
+      case 'scheduled':
+        iconData = Icons.schedule;
+        color = Colors.orange;
+        break;
+      case 'cancelled':
+        iconData = Icons.cancel;
+        color = Colors.red;
+        break;
+      default:
+        iconData = Icons.fiber_new;
+        color = Colors.grey;
+    }
+
+    return Container(
+      padding: EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(
+        iconData,
+        color: color,
+        size: 24,
       ),
     );
   }
@@ -261,11 +320,14 @@ class FertilizerLogsScreen extends StatelessWidget {
     String text = status.toUpperCase();
     
     switch (status.toLowerCase()) {
-      case 'completed':
+      case 'delivered':
         color = Colors.green;
         break;
-      case 'in_progress':
+      case 'processing':
         color = Colors.blue;
+        break;
+      case 'scheduled':
+        color = Colors.orange;
         break;
       case 'cancelled':
         color = Colors.red;
@@ -291,15 +353,9 @@ class FertilizerLogsScreen extends StatelessWidget {
     );
   }
 
-  Stream<QuerySnapshot> _getProductionStream() {
+  Stream<QuerySnapshot> _getTransactionsStream() {
     return FirebaseFirestore.instance
-        .collection('fertilizer_production')
-        .snapshots();
-  }
-
-  Stream<QuerySnapshot> _getDistributionStream() {
-    return FirebaseFirestore.instance
-        .collection('fertilizer_distribution')
+        .collection('fertilizer_requests')
         .orderBy('timestamp', descending: true)
         .limit(20)
         .snapshots();

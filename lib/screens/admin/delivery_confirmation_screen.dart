@@ -24,6 +24,7 @@ class _DeliveryConfirmationScreenState extends State<DeliveryConfirmationScreen>
     FirebaseFirestore.instance
         .collection('fertilizer_requests')
         .where('status', whereIn: ['pending', 'confirmed'])
+        .orderBy('deliveryDate', descending: false)
         .get()
         .then((snapshot) {
       final Map<DateTime, List<dynamic>> events = {};
@@ -40,7 +41,7 @@ class _DeliveryConfirmationScreenState extends State<DeliveryConfirmationScreen>
           
           events[day]!.add({
             'id': doc.id,
-            'location': data['farmLocation'] ?? 'Unknown Location',
+            'location': data['farmLocationName'] ?? 'Unknown Location',
             'farmer': data['farmerName'] ?? 'Unknown Farmer',
             'quantity': data['quantity']?.toString() ?? '0',
             'status': data['status'] ?? 'pending'
@@ -157,14 +158,14 @@ class _DeliveryConfirmationScreenState extends State<DeliveryConfirmationScreen>
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Delivery Confirmation',
+                  'Delivery Management',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'Confirm and track fertilizer deliveries',
+                  'Schedule and confirm fertilizer deliveries',
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     color: Colors.grey[600],
                   ),
@@ -211,40 +212,58 @@ class _DeliveryConfirmationScreenState extends State<DeliveryConfirmationScreen>
                               itemCount: deliveries.length,
                               itemBuilder: (context, index) {
                                 final delivery = deliveries[index].data() as Map<String, dynamic>;
-                                final timestamp = delivery['timestamp'] as Timestamp;
+                                final deliveryDate = (delivery['deliveryDate'] as Timestamp?)?.toDate();
                                 
                                 return Card(
                                   margin: EdgeInsets.only(bottom: 12),
                                   child: ListTile(
-                                    title: Text(delivery['farmerName'] ?? 'Unknown Farmer'),
+                                    title: Text(
+                                      'Request by ${delivery['farmerName'] ?? 'Unknown Farmer'}',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
                                     subtitle: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         SizedBox(height: 4),
                                         Text(
-                                          '${delivery['quantity']}kg • ${delivery['farmLocation']}',
+                                          '${delivery['quantity']}kg • ${delivery['farmLocationName']}',
                                           style: TextStyle(
                                             color: Colors.black87,
                                             fontWeight: FontWeight.w500,
                                           ),
                                         ),
                                         SizedBox(height: 2),
-                                        Text(
-                                          'Requested: ${DateFormat('MMM d, y').format(timestamp.toDate())}',
-                                          style: TextStyle(color: Colors.grey[600]),
-                                        ),
+                                        if (deliveryDate != null)
+                                          Text(
+                                            'Delivery Date: ${DateFormat('MMM d, y').format(deliveryDate)}',
+                                            style: TextStyle(color: Colors.grey[600]),
+                                          ),
                                       ],
                                     ),
                                     trailing: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        IconButton(
-                                          icon: Icon(Icons.check_circle, color: Colors.green),
+                                        ElevatedButton.icon(
+                                          icon: Icon(Icons.check_circle, size: 18),
+                                          label: Text('Confirm'),
                                           onPressed: () => _confirmDelivery(context, deliveries[index].id),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.green,
+                                            foregroundColor: Colors.white,
+                                            padding: EdgeInsets.symmetric(horizontal: 12),
+                                          ),
                                         ),
-                                        IconButton(
-                                          icon: Icon(Icons.cancel, color: Colors.red),
-                                          onPressed: () => _rejectDelivery(context, deliveries[index].id),
+                                        SizedBox(width: 8),
+                                        OutlinedButton.icon(
+                                          icon: Icon(Icons.calendar_month, size: 18),
+                                          label: Text('Reschedule'),
+                                          onPressed: () => _showRescheduleDialog(context, deliveries[index].id, deliveryDate),
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: Theme.of(context).primaryColor,
+                                            padding: EdgeInsets.symmetric(horizontal: 12),
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -254,6 +273,59 @@ class _DeliveryConfirmationScreenState extends State<DeliveryConfirmationScreen>
                             );
                           },
                         ),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(height: 24),
+
+                // Delivery Calendar
+                Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildCalendarHeader(),
+                        SizedBox(height: 16),
+                        TableCalendar(
+                          firstDay: DateTime.now().subtract(Duration(days: 365)),
+                          lastDay: DateTime.now().add(Duration(days: 365)),
+                          focusedDay: _focusedDay,
+                          calendarFormat: _calendarFormat,
+                          selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+                          eventLoader: _getEventsForDay,
+                          onDaySelected: (selectedDay, focusedDay) {
+                            setState(() {
+                              _selectedDay = selectedDay;
+                              _focusedDay = focusedDay;
+                            });
+                          },
+                          onFormatChanged: (format) {
+                            setState(() {
+                              _calendarFormat = format;
+                            });
+                          },
+                          onPageChanged: (focusedDay) {
+                            _focusedDay = focusedDay;
+                          },
+                          calendarStyle: CalendarStyle(
+                            markersMaxCount: 3,
+                            markerDecoration: BoxDecoration(
+                              color: Theme.of(context).primaryColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                        if (_selectedDay != null && _getEventsForDay(_selectedDay!).isNotEmpty) ...[
+                          SizedBox(height: 16),
+                          Text(
+                            'Deliveries on ${DateFormat('MMM d, y').format(_selectedDay!)}',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          SizedBox(height: 8),
+                          _buildEventList(_getEventsForDay(_selectedDay!)),
+                        ],
                       ],
                     ),
                   ),
@@ -268,8 +340,9 @@ class _DeliveryConfirmationScreenState extends State<DeliveryConfirmationScreen>
 
   Stream<QuerySnapshot> _getPendingDeliveriesStream() {
     return FirebaseFirestore.instance
-        .collection('fertilizer_deliveries')
+        .collection('fertilizer_requests')
         .where('status', isEqualTo: 'pending')
+        .orderBy('deliveryDate', descending: false)
         .orderBy('timestamp', descending: true)
         .snapshots();
   }
@@ -294,23 +367,50 @@ class _DeliveryConfirmationScreenState extends State<DeliveryConfirmationScreen>
     }
   }
 
-  Future<void> _rejectDelivery(BuildContext context, String deliveryId) async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('fertilizer_deliveries')
-          .doc(deliveryId)
-          .update({
-        'status': 'rejected',
-        'rejectedAt': FieldValue.serverTimestamp(),
-      });
+  Future<void> _showRescheduleDialog(BuildContext context, String deliveryId, DateTime? currentDate) async {
+    DateTime? selectedDate = await showDatePicker(
+      context: context,
+      initialDate: currentDate ?? DateTime.now().add(Duration(days: 1)),
+      firstDate: DateTime.now().add(Duration(days: 1)),
+      lastDate: DateTime.now().add(Duration(days: 30)),
+      helpText: 'Select New Delivery Date',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Theme.of(context).primaryColor,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Delivery rejected')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error rejecting delivery: $e')),
-      );
+    if (selectedDate != null) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('fertilizer_requests')
+            .doc(deliveryId)
+            .update({
+          'deliveryDate': Timestamp.fromDate(selectedDate),
+          'rescheduledAt': FieldValue.serverTimestamp(),
+        });
+
+        if (!context.mounted) return;
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Delivery rescheduled successfully')),
+        );
+      } catch (e) {
+        if (!context.mounted) return;
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error rescheduling delivery: $e')),
+        );
+      }
     }
   }
 } 

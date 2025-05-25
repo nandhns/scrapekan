@@ -46,23 +46,49 @@ class WasteService extends FirebaseService {
 
   // Get user's waste history
   Stream<List<WasteLog>> getUserWasteHistory(String userId) {
-    return wasteLogsRef
-        .where('userId', isEqualTo: userId)
-        .orderBy('timestamp', descending: true)
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => WasteLog(
+    print('Getting waste history for user: $userId');
+    try {
+      return wasteLogsRef
+          .where('userId', isEqualTo: userId)
+          .orderBy('timestamp', descending: true)
+          .snapshots()
+          .map((snapshot) {
+            print('Received ${snapshot.docs.length} waste logs');
+            return snapshot.docs.map((doc) {
+              Map<String, dynamic> data;
+              try {
+                data = doc.data() as Map<String, dynamic>;
+                print('Processing waste log: ${doc.id}');
+              } catch (e) {
+                print('Error processing document ${doc.id}: $e');
+                return null;
+              }
+              
+              try {
+                return WasteLog(
                   id: doc.id,
-                  userId: doc['userId'],
-                  dropOffPointId: doc['dropOffPointId'],
-                  weight: doc['weight'],
-                  wasteType: doc['wasteType'],
-                  timestamp: (doc['timestamp'] as Timestamp).toDate(),
-                  imageUrl: doc['imageUrl'],
-                  status: doc['status'],
-                  verifiedBy: doc['verifiedBy'],
-                ))
-            .toList());
+                  userId: data['userId'] as String? ?? '',
+                  dropOffPointId: data['dropOffPointId'] as String? ?? '',
+                  weight: ((data['weight'] as num?) ?? 0).toDouble(),
+                  wasteType: data['wasteType'] as String? ?? 'unknown',
+                  timestamp: ((data['timestamp'] as Timestamp?) ?? Timestamp.now()).toDate(),
+                  imageUrl: data['imageUrl'] as String? ?? '',
+                  status: 'composted', // Always set as composted for citizens
+                  verifiedBy: null,
+                );
+              } catch (e) {
+                print('Error creating WasteLog from data: $e');
+                return null;
+              }
+            })
+            .where((log) => log != null)
+            .cast<WasteLog>()
+            .toList();
+          });
+    } catch (e) {
+      print('Error in getUserWasteHistory: $e');
+      rethrow;
+    }
   }
 
   // Get drop-off point waste logs
@@ -73,17 +99,20 @@ class WasteService extends FirebaseService {
         .orderBy('timestamp', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
-            .map((doc) => WasteLog(
-                  id: doc.id,
-                  userId: doc['userId'],
-                  dropOffPointId: doc['dropOffPointId'],
-                  weight: doc['weight'],
-                  wasteType: doc['wasteType'],
-                  timestamp: (doc['timestamp'] as Timestamp).toDate(),
-                  imageUrl: doc['imageUrl'],
-                  status: doc['status'],
-                  verifiedBy: doc['verifiedBy'],
-                ))
+            .map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              return WasteLog(
+                id: doc.id,
+                userId: data['userId'] as String? ?? '',
+                dropOffPointId: data['dropOffPointId'] as String? ?? '',
+                weight: ((data['weight'] as num?) ?? 0).toDouble(),
+                wasteType: data['wasteType'] as String? ?? 'unknown',
+                timestamp: ((data['timestamp'] as Timestamp?) ?? Timestamp.now()).toDate(),
+                imageUrl: data['imageUrl'] as String? ?? '',
+                status: data['status'] as String? ?? 'pending',
+                verifiedBy: data['verifiedBy'] as String?,
+              );
+            })
             .toList());
   }
 

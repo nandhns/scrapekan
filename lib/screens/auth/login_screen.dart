@@ -4,6 +4,7 @@ import '../../services/auth_service.dart';
 import '../main_screen.dart';
 import 'register_screen.dart';
 import '../../widgets/custom_app_bar.dart';
+import '../../utils/data_seeder.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -16,10 +17,68 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
+  int _logoTaps = 0;
+  bool _showDevMode = false;
+  bool _isSeeding = false;
 
   @override
   void initState() {
     super.initState();
+  }
+
+  void _handleLogoTap() {
+    setState(() {
+      _logoTaps++;
+      if (_logoTaps >= 7) {
+        _showDevMode = true;
+      }
+    });
+
+    // Reset tap count after 3 seconds of inactivity
+    Future.delayed(Duration(seconds: 3), () {
+      if (mounted && _logoTaps < 7) {
+        setState(() {
+          _logoTaps = 0;
+        });
+      }
+    });
+  }
+
+  Future<void> _seedData() async {
+    if (_isSeeding) return;
+
+    setState(() {
+      _isSeeding = true;
+    });
+
+    try {
+      final seeder = DataSeeder();
+      await seeder.seedAllData();
+      
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Test data seeded successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error seeding data: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSeeding = false;
+        });
+      }
+    }
   }
 
   @override
@@ -39,10 +98,13 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 SizedBox(height: 32),
-                Text(
-                  'Welcome to ScraPekan',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                  textAlign: TextAlign.center,
+                GestureDetector(
+                  onTap: _handleLogoTap,
+                  child: Text(
+                    'Welcome to ScraPekan',
+                    style: Theme.of(context).textTheme.headlineMedium,
+                    textAlign: TextAlign.center,
+                  ),
                 ),
                 SizedBox(height: 32),
                 if (_errorMessage != null) ...[
@@ -133,6 +195,28 @@ class _LoginScreenState extends State<LoginScreen> {
                       },
                   child: Text('Don\'t have an account? Register'),
                 ),
+                if (_showDevMode) ...[
+                  Divider(height: 32),
+                  Text(
+                    'Developer Mode',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 12,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 8),
+                  _isSeeding
+                    ? Center(child: CircularProgressIndicator())
+                    : TextButton.icon(
+                        onPressed: _seedData,
+                        icon: Icon(Icons.data_array),
+                        label: Text('Seed Test Data'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.grey[700],
+                        ),
+                      ),
+                ],
                 SizedBox(height: 16),
               ],
             ),
@@ -143,47 +227,37 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
-    if (!mounted) return;
-    
-    setState(() {
-      _errorMessage = null;
-    });
-
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    
-    try {
-      final authService = Provider.of<AuthService>(context, listen: false);
-      final user = await authService.signInWithEmailAndPassword(
-        _emailController.text.trim(),
-        _passwordController.text,
-      );
-
-      if (!mounted) return;
-
-      if (user != null) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => MainScreen()),
-          (route) => false,
-        );
-      } else {
-        setState(() {
-          _errorMessage = 'Invalid email or password';
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (!mounted) return;
+    if (_formKey.currentState!.validate()) {
+      setState(() => _isLoading = true);
       
-      setState(() {
-        _errorMessage = e.toString().contains('offline') || e.toString().contains('network')
-            ? 'Network error: Please check your internet connection'
-            : e.toString();
-        _isLoading = false;
-      });
+      try {
+        final authService = Provider.of<AuthService>(context, listen: false);
+        final user = await authService.signInWithEmailAndPassword(
+          _emailController.text,
+          _passwordController.text,
+        );
+
+        if (!mounted) return;
+
+        if (user != null) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => MainScreen()),
+            (route) => false,
+          );
+        }
+      } catch (e) {
+        if (!mounted) return;
+        
+        setState(() => _isLoading = false);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 

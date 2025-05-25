@@ -123,5 +123,6 @@
         { "fieldPath": "earnedAt", "order": "DESCENDING" }
       ]
     }
-  ]
+  ],
+  "fieldOverrides": []
 } 

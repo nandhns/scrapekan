@@ -21,19 +21,13 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
   bool _isManualMode = true;
   late final MobileScannerController _scannerController;
   bool _isSubmitting = false;
+  List<Map<String, dynamic>> _dropOffLocations = [];
 
   final List<Map<String, String>> _wasteTypes = [
     {'value': 'food', 'label': 'Food Waste'},
     {'value': 'garden', 'label': 'Garden Waste'},
     {'value': 'paper', 'label': 'Paper Waste'},
     {'value': 'other', 'label': 'Other Organic Waste'},
-  ];
-
-  final List<Map<String, String>> _dropOffLocations = [
-    {'value': 'loc1', 'label': 'Pasar Tani Kekal Pekan'},
-    {'value': 'loc2', 'label': 'Pasar Tani Kekal Gambang'},
-    {'value': 'loc3', 'label': 'Taman Tas Collection Center'},
-    {'value': 'loc4', 'label': 'Bandar Putra Collection Point'},
   ];
 
   @override
@@ -44,6 +38,8 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
       torchEnabled: false,
       formats: [BarcodeFormat.qrCode],
     );
+    _fetchDropOffLocations();
+    //_addInitialDropOffPoints();
   }
 
   @override
@@ -52,6 +48,107 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
     _noteController.dispose();
     _scannerController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchDropOffLocations() async {
+    try {
+      print('Fetching dropoff locations...');
+      final snapshot = await FirebaseFirestore.instance
+          .collection('dropoff_points')
+          .where('isOpen', isEqualTo: true)
+          .get();
+      
+      print('Found ${snapshot.docs.length} dropoff points');
+      
+      setState(() {
+        _dropOffLocations = snapshot.docs.map((doc) {
+          final data = doc.data();
+          print('Processing dropoff point: ${doc.id} - ${data['name']}');
+          return {
+            'value': doc.id,
+            'label': data['name'] as String? ?? 'Unknown Location',
+          };
+        }).toList();
+      });
+      
+      print('Dropoff locations loaded: $_dropOffLocations');
+    } catch (e) {
+      print('Error fetching dropoff locations: $e');
+    }
+  }
+
+  Future<void> _addInitialDropOffPoints() async {
+    try {
+      print('Starting to add initial dropoff points...');
+      
+      // First check if points already exist
+      final existing = await FirebaseFirestore.instance
+          .collection('dropoff_points')
+          .limit(1)
+          .get();
+      
+      if (existing.docs.isNotEmpty) {
+        print('Dropoff points already exist, skipping initialization');
+        return;
+      }
+
+      final batch = FirebaseFirestore.instance.batch();
+      final dropoffPoints = [
+        {
+          'name': 'Pasar Tani Kekal Pekan',
+          'address': 'Jalan Engku Muda Mansor, 26600 Pekan, Pahang',
+          'isOpen': true,
+          'currentCapacity': 0,
+          'maxCapacity': 1000,
+          'managedBy': 'municipal_worker_1',
+          'lastUpdated': FieldValue.serverTimestamp(),
+        },
+        {
+          'name': 'Pasar Tani Kekal Gambang',
+          'address': 'Jalan Gambang Perdana 1, 26300 Gambang, Pahang',
+          'isOpen': true,
+          'currentCapacity': 0,
+          'maxCapacity': 800,
+          'managedBy': 'municipal_worker_1',
+          'lastUpdated': FieldValue.serverTimestamp(),
+        },
+        {
+          'name': 'Taman Tas Collection Center',
+          'address': 'Taman Tas, 25150 Kuantan, Pahang',
+          'isOpen': true,
+          'currentCapacity': 0,
+          'maxCapacity': 1200,
+          'managedBy': 'municipal_worker_2',
+          'lastUpdated': FieldValue.serverTimestamp(),
+        },
+        {
+          'name': 'Bandar Putra Collection Point',
+          'address': 'Bandar Putra, 26600 Pekan, Pahang',
+          'isOpen': true,
+          'currentCapacity': 0,
+          'maxCapacity': 500,
+          'managedBy': 'municipal_worker_2',
+          'lastUpdated': FieldValue.serverTimestamp(),
+        }
+      ];
+
+      print('Creating ${dropoffPoints.length} dropoff points...');
+
+      for (final point in dropoffPoints) {
+        final ref = FirebaseFirestore.instance.collection('dropoff_points').doc();
+        batch.set(ref, point);
+        print('Added point to batch: ${point['name']}');
+      }
+
+      await batch.commit();
+      print('Successfully committed all dropoff points to Firestore');
+      
+      // Refresh the dropoff locations in the form
+      await _fetchDropOffLocations();
+    } catch (e) {
+      print('Error adding initial dropoff points: $e');
+      print('Error details: ${e.toString()}');
+    }
   }
 
   Future<void> _selectDate(BuildContext context) async {
@@ -180,13 +277,15 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
                 prefixIcon: Icon(Icons.location_on),
               ),
               value: _selectedLocation,
-              items: _dropOffLocations.map((location) {
-                return DropdownMenuItem(
-                  value: location['value'],
-                  child: Text(location['label']!),
-                );
-              }).toList(),
-              onChanged: (value) {
+              items: _dropOffLocations.isEmpty
+                ? [DropdownMenuItem(value: '', child: Text('Loading locations...'))]
+                : _dropOffLocations.map((location) {
+                    return DropdownMenuItem(
+                      value: location['value'].toString(),
+                      child: Text(location['label']!),
+                    );
+                  }).toList(),
+              onChanged: _dropOffLocations.isEmpty ? null : (value) {
                 setState(() => _selectedLocation = value);
               },
               validator: (value) {
@@ -357,12 +456,13 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
 
         await FirebaseFirestore.instance.collection('waste_logs').add({
           'userId': user.uid,
-          'date': Timestamp.fromDate(_selectedDate),
-          'location': _selectedLocation,
-          'wasteType': _selectedWasteType,
+          'dropOffPointId': _selectedLocation,
           'weight': double.parse(_weightController.text),
-          'note': _noteController.text,
+          'wasteType': _selectedWasteType,
           'timestamp': FieldValue.serverTimestamp(),
+          'imageUrl': '',
+          'status': 'pending',
+          'note': _noteController.text,
         });
 
         // Reset form

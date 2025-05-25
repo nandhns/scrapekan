@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import 'package:rxdart/rxdart.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   @override
@@ -9,6 +10,97 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  Stream<Map<String, dynamic>> _getDashboardData() {
+    final now = DateTime.now();
+    final startOfMonth = DateTime(now.year, now.month, 1);
+    final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+
+    // Get processed waste for compost production
+    final wasteStream = FirebaseFirestore.instance
+        .collection('waste_logs')
+        .where('status', isEqualTo: 'processed')
+        .snapshots();
+
+    // Get active contributors this month
+    final contributorsStream = FirebaseFirestore.instance
+        .collection('waste_logs')
+        .where('timestamp', isGreaterThanOrEqualTo: startOfMonth)
+        .snapshots();
+
+    // Get scheduled deliveries this week
+    final deliveriesStream = FirebaseFirestore.instance
+        .collection('fertilizer_requests')
+        .where('status', whereIn: ['pending', 'scheduled'])
+        .where('deliveryDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfWeek))
+        .where('deliveryDate', isLessThanOrEqualTo: Timestamp.fromDate(startOfWeek.add(Duration(days: 7))))
+        .snapshots();
+
+    // Combine all streams
+    return Rx.combineLatest3(
+      wasteStream,
+      contributorsStream,
+      deliveriesStream,
+      (
+        QuerySnapshot wasteLogs,
+        QuerySnapshot contributors,
+        QuerySnapshot deliveries,
+      ) {
+        // Calculate total compost produced
+        num totalCompost = 0;
+        for (var doc in wasteLogs.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          totalCompost += data['weight'] as num? ?? 0;
+        }
+
+        // Calculate CO2 saved (0.5kg CO2 per kg waste)
+        final co2Saved = totalCompost * 0.5;
+
+        // Get unique contributors this month
+        final uniqueContributors = contributors.docs
+            .map((doc) => (doc.data() as Map<String, dynamic>)['userId'] as String?)
+            .where((id) => id != null)
+            .toSet()
+            .length;
+
+        // Count scheduled deliveries
+        final scheduledDeliveries = deliveries.docs.length;
+
+        print('Found ${deliveries.docs.length} scheduled deliveries'); // Debug print
+        deliveries.docs.forEach((doc) {  // Debug print
+          final data = doc.data() as Map<String, dynamic>;
+          print('Delivery: ${data['status']} - Date: ${(data['deliveryDate'] as Timestamp).toDate()}');
+        });
+
+        return {
+          'totalCompost': totalCompost,
+          'activeContributors': uniqueContributors,
+          'scheduledDeliveries': scheduledDeliveries,
+          'co2Saved': co2Saved,
+        };
+      },
+    );
+  }
+
+  Stream<Map<String, dynamic>> _getInventoryData() {
+    return FirebaseFirestore.instance
+        .collection('inventory')
+        .doc('compost')
+        .snapshots()
+        .map((doc) {
+      if (!doc.exists) {
+        return {
+          'current': 0,
+          'total': 500, // Default capacity
+        };
+      }
+      final data = doc.data() as Map<String, dynamic>;
+      return {
+        'current': data['current'] ?? 0,
+        'total': data['capacity'] ?? 500,
+      };
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -34,63 +126,87 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
               SizedBox(height: 24),
               
-              // First Row - Two Boxes
-              Row(
-                children: [
-                  // Left Box - Compost Production
-                  Expanded(
-                    child: _buildStatBox(
-                      title: 'Compost',
-                      value: '1500',
-                      unit: 'kg',
-                      subtitle: 'Total Produced',
-                      icon: Icons.eco,
-                      color: Colors.green,
-                    ),
-                  ),
-                  SizedBox(width: 16),
-                  // Right Box - Contributors
-                  Expanded(
-                    child: _buildStatBox(
-                      title: 'Contributors',
-                      value: '87',
-                      unit: '',
-                      subtitle: 'Active this month',
-                      icon: Icons.people,
-                      color: Colors.blue,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 16),
-              
-              // Second Row - Two Boxes
-              Row(
-                children: [
-                  // Left Box - Deliveries
-                  Expanded(
-                    child: _buildStatBox(
-                      title: 'Deliveries',
-                      value: '12',
-                      unit: '',
-                      subtitle: 'Scheduled this week',
-                      icon: Icons.local_shipping,
-                      color: Colors.orange,
-                    ),
-                  ),
-                  SizedBox(width: 16),
-                  // Right Box - CO2 Saved
-                  Expanded(
-                    child: _buildStatBox(
-                      title: 'CO2 Saved',
-                      value: '750',
-                      unit: 'kg',
-                      subtitle: 'Environment impact',
-                      icon: Icons.cloud_done,
-                      color: Colors.purple,
-                    ),
-                  ),
-                ],
+              StreamBuilder<Map<String, dynamic>>(
+                stream: _getDashboardData(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Text('Error: ${snapshot.error}');
+                  }
+
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Center(child: CircularProgressIndicator());
+                  }
+
+                  final data = snapshot.data ?? {
+                    'totalCompost': 0,
+                    'activeContributors': 0,
+                    'scheduledDeliveries': 0,
+                    'co2Saved': 0,
+                  };
+
+                  return Column(
+                    children: [
+                      // First Row - Two Boxes
+                      Row(
+                        children: [
+                          // Left Box - Compost Production
+                          Expanded(
+                            child: _buildStatBox(
+                              title: 'Compost',
+                              value: data['totalCompost'].toStringAsFixed(0),
+                              unit: 'kg',
+                              subtitle: 'Total Produced',
+                              icon: Icons.eco,
+                              color: Colors.green,
+                            ),
+                          ),
+                          SizedBox(width: 16),
+                          // Right Box - Contributors
+                          Expanded(
+                            child: _buildStatBox(
+                              title: 'Contributors',
+                              value: data['activeContributors'].toString(),
+                              unit: '',
+                              subtitle: 'Active this month',
+                              icon: Icons.people,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 16),
+                      
+                      // Second Row - Two Boxes
+                      Row(
+                        children: [
+                          // Left Box - Deliveries
+                          Expanded(
+                            child: _buildStatBox(
+                              title: 'Deliveries',
+                              value: data['scheduledDeliveries'].toString(),
+                              unit: '',
+                              subtitle: 'Scheduled this week',
+                              icon: Icons.local_shipping,
+                              color: Colors.orange,
+                            ),
+                          ),
+                          SizedBox(width: 16),
+                          // Right Box - CO2 Saved
+                          Expanded(
+                            child: _buildStatBox(
+                              title: 'CO2 Saved',
+                              value: data['co2Saved'].toStringAsFixed(0),
+                              unit: 'kg',
+                              subtitle: 'Environment impact',
+                              icon: Icons.cloud_done,
+                              color: Colors.purple,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
               ),
               SizedBox(height: 24),
               
@@ -110,12 +226,26 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         ),
                       ),
                       SizedBox(height: 16),
-                      _buildInventoryItem(
-                        'General Purpose Compost',
-                        '450',
-                        '500',
-                        'kg',
-                        Colors.green,
+                      StreamBuilder<Map<String, dynamic>>(
+                        stream: _getInventoryData(),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return Text('Error: ${snapshot.error}');
+                          }
+
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return Center(child: CircularProgressIndicator());
+                          }
+
+                          final data = snapshot.data!;
+                          return _buildInventoryItem(
+                            'General Purpose Compost',
+                            data['current'].toString(),
+                            data['total'].toString(),
+                            'kg',
+                            Colors.green,
+                          );
+                        },
                       ),
                     ],
                   ),

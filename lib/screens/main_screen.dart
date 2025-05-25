@@ -32,18 +32,21 @@ class _MainScreenState extends State<MainScreen> {
   bool _isLoading = true;
   String? _error;
   UserModel? _userData;
-  late List<Widget> _screens;
+  List<Widget>? _screens;
   String _currentTitle = 'ScraPekan';
 
   @override
   void initState() {
     super.initState();
-    // Initialize with citizen view by default
-    _screens = _getScreensForRole('citizen');
     _loadUserData();
   }
 
   Future<void> _loadUserData() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
     final authService = Provider.of<AuthService>(context, listen: false);
     final user = authService.currentUser;
 
@@ -51,6 +54,13 @@ class _MainScreenState extends State<MainScreen> {
       setState(() {
         _isLoading = false;
         _error = 'Please log in';
+      });
+      // Navigate to login screen if no user
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => LoginScreen()),
+        );
       });
       return;
     }
@@ -65,11 +75,20 @@ class _MainScreenState extends State<MainScreen> {
         return;
       }
 
+      // Validate role
+      if (!['citizen', 'vendor', 'farmer', 'admin', 'municipal'].contains(userData.role)) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Invalid user role';
+        });
+        return;
+      }
+
       setState(() {
         _userData = userData;
         _screens = _getScreensForRole(userData.role);
         _currentTitle = _getTitlesForRole(userData.role)[0];
-        _selectedIndex = 0; // Reset to first screen when role changes
+        _selectedIndex = 0;
         _isLoading = false;
         _error = null;
       });
@@ -266,37 +285,30 @@ class _MainScreenState extends State<MainScreen> {
       );
     }
 
-    if (_error != null) {
+    if (_error != null || _userData == null || _screens == null) {
       return Scaffold(
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(_error!),
+              Text(_error ?? 'No user data available'),
               const SizedBox(height: 16),
-              if (_error == 'Please log in')
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => LoginScreen()),
-                    );
-                  },
-                  child: const Text('Go to Login'),
-                )
-              else
-                ElevatedButton(
-                  onPressed: _loadUserData,
-                  child: const Text('Retry'),
-                ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => LoginScreen()),
+                  );
+                },
+                child: const Text('Go to Login'),
+              ),
             ],
           ),
         ),
       );
     }
 
-    final role = _userData?.role ?? 'citizen';
-    final navigationItems = _getNavigationItemsForRole(role);
+    final navigationItems = _getNavigationItemsForRole(_userData!.role);
 
     return Scaffold(
       appBar: AppBar(
@@ -335,7 +347,7 @@ class _MainScreenState extends State<MainScreen> {
       drawer: _buildDrawer(),
       body: IndexedStack(
         index: _selectedIndex,
-        children: _screens,
+        children: _screens!,
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
@@ -354,9 +366,8 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Widget _buildDrawer() {
-    final role = _userData?.role ?? 'citizen';
-    final titles = _getTitlesForRole(role);
-    final navigationItems = _getNavigationItemsForRole(role);
+    final titles = _getTitlesForRole(_userData!.role);
+    final navigationItems = _getNavigationItemsForRole(_userData!.role);
 
     return Drawer(
       child: ListView(
@@ -371,7 +382,7 @@ class _MainScreenState extends State<MainScreen> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 Text(
-                  'ScraPekan',
+                  _userData!.name,
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 24,
@@ -380,10 +391,18 @@ class _MainScreenState extends State<MainScreen> {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'Making recycling easier',
+                  _userData!.email,
                   style: TextStyle(
                     color: Colors.white70,
                     fontSize: 16,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Role: ${_userData!.role.substring(0, 1).toUpperCase()}${_userData!.role.substring(1)}',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
                   ),
                 ),
               ],

@@ -1,30 +1,60 @@
 import 'package:flutter/material.dart';
-import '../services/firebase_service.dart';
-import '../services/waste_service.dart';
-import '../services/compost_service.dart';
-import '../services/notification_service.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_service.dart';
+import '../services/connectivity_service.dart';
 
-class ServiceProvider extends InheritedWidget {
-  final FirebaseService firebaseService;
-  final WasteService wasteService;
-  final CompostService compostService;
-  final NotificationService notificationService;
+class ServiceProvider extends StatelessWidget {
+  final Widget child;
 
-  ServiceProvider({
+  const ServiceProvider({
     Key? key,
-    required Widget child,
-  })  : firebaseService = FirebaseService(),
-        wasteService = WasteService(),
-        compostService = CompostService(),
-        notificationService = NotificationService(),
-        super(key: key, child: child);
-
-  static ServiceProvider of(BuildContext context) {
-    final provider = context.dependOnInheritedWidgetOfExactType<ServiceProvider>();
-    assert(provider != null, 'No ServiceProvider found in context');
-    return provider!;
-  }
+    required this.child,
+  }) : super(key: key);
 
   @override
-  bool updateShouldNotify(ServiceProvider oldWidget) => false;
+  Widget build(BuildContext context) {
+    return FutureBuilder<AuthService>(
+      future: AuthService.create(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: Text('Error initializing services: ${snapshot.error}'),
+              ),
+            ),
+          );
+        }
+
+        final authService = snapshot.data!;
+        final connectivityService = ConnectivityService();
+
+        return MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AuthService>.value(
+              value: authService,
+            ),
+            ChangeNotifierProvider<ConnectivityService>.value(
+              value: connectivityService,
+            ),
+          ],
+          child: child,
+        );
+      },
+    );
+  }
+
+  static ServiceProvider of(BuildContext context) {
+    return context.findAncestorWidgetOfExactType<ServiceProvider>()!;
+  }
 } 
