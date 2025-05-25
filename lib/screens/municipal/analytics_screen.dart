@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import '../../scripts/seed_fertilizer_requests.dart';
+import '../../config/app_config.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   @override
@@ -10,6 +12,87 @@ class AnalyticsScreen extends StatefulWidget {
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
   String _selectedPeriod = 'month';
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  Future<Map<String, dynamic>> _getRegionalDemandData() async {
+    // Get current period start date
+    DateTime periodStart = _selectedPeriod == 'month' 
+        ? DateTime.now().subtract(Duration(days: 30))
+        : DateTime.now().subtract(Duration(days: 7));
+
+    // Get fertilizer requests for the period
+    QuerySnapshot currentRequests = await _firestore
+        .collection('fertilizer_requests')
+        .where('timestamp', isGreaterThan: Timestamp.fromDate(periodStart))
+        .get();
+
+    // Get previous period requests for growth calculation
+    QuerySnapshot previousRequests = await _firestore
+        .collection('fertilizer_requests')
+        .where('timestamp', 
+            isGreaterThan: Timestamp.fromDate(periodStart.subtract(Duration(days: _selectedPeriod == 'month' ? 30 : 7))),
+            isLessThan: Timestamp.fromDate(periodStart))
+        .get();
+
+    // Calculate demand by region
+    Map<String, double> currentDemand = {};
+    Map<String, double> previousDemand = {};
+    
+    // Process current period
+    for (var doc in currentRequests.docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final region = data['region'] as String;
+      final amount = (data['amount'] as num).toDouble();
+      currentDemand[region] = (currentDemand[region] ?? 0) + amount;
+    }
+
+    // Process previous period
+    for (var doc in previousRequests.docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final region = data['region'] as String;
+      final amount = (data['amount'] as num).toDouble();
+      previousDemand[region] = (previousDemand[region] ?? 0) + amount;
+    }
+
+    // Find highest demand region
+    String highestDemandRegion = '';
+    double highestDemand = 0;
+    double totalDemand = 0;
+
+    currentDemand.forEach((region, demand) {
+      totalDemand += demand;
+      if (demand > highestDemand) {
+        highestDemand = demand;
+        highestDemandRegion = region;
+      }
+    });
+
+    // Calculate highest growth rate
+    String fastestGrowingRegion = '';
+    double highestGrowthRate = 0;
+
+    currentDemand.forEach((region, currentAmount) {
+      final previousAmount = previousDemand[region] ?? 0;
+      if (previousAmount > 0) {
+        final growthRate = (currentAmount - previousAmount) / previousAmount * 100;
+        if (growthRate > highestGrowthRate) {
+          highestGrowthRate = growthRate;
+          fastestGrowingRegion = region;
+        }
+      }
+    });
+
+    return {
+      'highestDemand': {
+        'region': highestDemandRegion,
+        'percentage': (highestDemand / totalDemand * 100).toStringAsFixed(1),
+      },
+      'fastestGrowing': {
+        'region': fastestGrowingRegion,
+        'growth': highestGrowthRate.toStringAsFixed(1),
+      },
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +105,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header Section with Period Selector
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final isWide = constraints.maxWidth > 600;
@@ -65,55 +147,72 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                           ],
                         ),
                         SizedBox(height: 24),
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            return constraints.maxWidth > 600
-                                ? Row(
-                                    children: [
-                                      Expanded(
-                                        child: _buildDemandCard(
-                                          context,
-                                          'Highest Demand',
-                                          'Taman Melati',
-                                          '35%',
-                                          'of total requests',
-                                          Colors.orange,
-                                        ),
-                                      ),
-                                      SizedBox(width: 16),
-                                      Expanded(
-                                        child: _buildDemandCard(
-                                          context,
-                                          'Growing Region',
-                                          'Wangsa Maju',
-                                          '+22%',
-                                          'increase in requests',
-                                          Colors.green,
-                                        ),
-                                      ),
-                                    ],
-                                  )
-                                : Column(
-                                    children: [
-                                      _buildDemandCard(
-                                        context,
-                                        'Highest Demand',
-                                        'Taman Melati',
-                                        '35%',
-                                        'of total requests',
-                                        Colors.orange,
-                                      ),
-                                      SizedBox(height: 16),
-                                      _buildDemandCard(
-                                        context,
-                                        'Growing Region',
-                                        'Wangsa Maju',
-                                        '+22%',
-                                        'increase in requests',
-                                        Colors.green,
-                                      ),
-                                    ],
-                                  );
+                        FutureBuilder<Map<String, dynamic>>(
+                          future: _getRegionalDemandData(),
+                          builder: (context, snapshot) {
+                            if (snapshot.hasError) {
+                              return Center(child: Text('Error loading data'));
+                            }
+
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return Center(child: CircularProgressIndicator());
+                            }
+
+                            final data = snapshot.data!;
+                            final highestDemand = data['highestDemand'];
+                            final fastestGrowing = data['fastestGrowing'];
+
+                            return LayoutBuilder(
+                              builder: (context, constraints) {
+                                return constraints.maxWidth > 600
+                                    ? Row(
+                                        children: [
+                                          Expanded(
+                                            child: _buildDemandCard(
+                                              context,
+                                              'Highest Demand',
+                                              highestDemand['region'],
+                                              '${highestDemand['percentage']}%',
+                                              'of total requests',
+                                              Colors.orange,
+                                            ),
+                                          ),
+                                          SizedBox(width: 16),
+                                          Expanded(
+                                            child: _buildDemandCard(
+                                              context,
+                                              'Growing Region',
+                                              fastestGrowing['region'],
+                                              '+${fastestGrowing['growth']}%',
+                                              'increase in requests',
+                                              Colors.green,
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    : Column(
+                                        children: [
+                                          _buildDemandCard(
+                                            context,
+                                            'Highest Demand',
+                                            highestDemand['region'],
+                                            '${highestDemand['percentage']}%',
+                                            'of total requests',
+                                            Colors.orange,
+                                          ),
+                                          SizedBox(height: 16),
+                                          _buildDemandCard(
+                                            context,
+                                            'Growing Region',
+                                            fastestGrowing['region'],
+                                            '+${fastestGrowing['growth']}%',
+                                            'increase in requests',
+                                            Colors.green,
+                                          ),
+                                        ],
+                                      );
+                              },
+                            );
                           },
                         ),
                       ],
@@ -316,6 +415,34 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             foregroundColor: Colors.white,
           ),
         ),
+        if (AppConfig.isDevelopment) ...[
+          SizedBox(width: 16),
+          ElevatedButton.icon(
+            onPressed: () async {
+              try {
+                final seeder = FertilizerRequestSeeder();
+                await seeder.seedData();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Test data seeded successfully')),
+                );
+                setState(() {}); // Refresh the screen
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error seeding data: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            icon: Icon(Icons.data_array),
+            label: Text('Seed Test Data'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.grey[700],
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
       ],
     );
   }

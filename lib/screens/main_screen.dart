@@ -4,10 +4,10 @@ import '../services/auth_service.dart';
 import '../models/user_model.dart';
 import 'auth/login_screen.dart';
 // Citizen screens
-import 'citizen/home_map_screen.dart';
+import 'citizen/home_map.dart';
 import 'citizen/log_waste_screen.dart';
 import 'citizen/dashboard_screen.dart';
-import 'citizen/tips_screen.dart';
+import 'citizen/compost_tips_screen.dart';
 import 'citizen/rewards_screen.dart';
 // Farmer screens
 import 'farmer/fertilizer_request_screen.dart';
@@ -121,11 +121,11 @@ class _MainScreenState extends State<MainScreen> {
       case 'citizen':
       case 'vendor':
         return [
-          HomeMapScreen(),
-          CitizenLogWasteScreen(),
-          CitizenDashboardScreen(),
-          CitizenTipsScreen(),
-          CitizenRewardsScreen(),
+          HomeMap(),
+          LogWasteScreen(),
+          DashboardScreen(),
+          CompostTipsScreen(),
+          RewardsScreen(),
         ];
       case 'farmer':
         return [
@@ -146,7 +146,7 @@ class _MainScreenState extends State<MainScreen> {
           MachineMonitoringScreen(),
         ];
       default:
-        return [HomeMapScreen()];
+        return [HomeMap()];
     }
   }
 
@@ -160,7 +160,7 @@ class _MainScreenState extends State<MainScreen> {
             label: 'Map',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.qr_code_scanner),
+            icon: Icon(Icons.add_circle_outline),
             label: 'Log Waste',
           ),
           BottomNavigationBarItem(
@@ -168,11 +168,11 @@ class _MainScreenState extends State<MainScreen> {
             label: 'Dashboard',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.eco),
+            icon: Icon(Icons.lightbulb_outline),
             label: 'Tips',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.star),
+            icon: Icon(Icons.star_border),
             label: 'Rewards',
           ),
         ];
