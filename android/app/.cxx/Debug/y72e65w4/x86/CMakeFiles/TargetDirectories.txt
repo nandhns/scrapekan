@@ -1,2 +1,0 @@
-C:/Users/aiman/Desktop/scrapekan/android/app/.cxx/Debug/y72e65w4/x86/CMakeFiles/edit_cache.dir
-C:/Users/aiman/Desktop/scrapekan/android/app/.cxx/Debug/y72e65w4/x86/CMakeFiles/rebuild_cache.dir

@@ -6,7 +6,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'dart:js' as js;
 import '../../config/api_keys.dart';
 
 class HomeMap extends StatefulWidget {
@@ -77,30 +76,8 @@ class _HomeMapState extends State<HomeMap> {
   @override
   void initState() {
     super.initState();
-    if (kIsWeb) {
-      // Check if Google Maps is already loaded
-      if (!js.context.hasProperty('google')) {
-        // Load Google Maps JavaScript API
-        final script = js.context['document'].callMethod('createElement', ['script']);
-        script['src'] = 'https://maps.googleapis.com/maps/api/js?key=${ApiKeys.googleMapsApiKey}';
-        script['type'] = 'text/javascript';
-        js.context['document']['head'].callMethod('appendChild', [script]);
-        
-        // Wait for the API to load
-        js.context['window'].addEventListener('load', (event) {
-          if (mounted) {
-            _getCurrentLocation();
-            _initializeMarkers();
-          }
-        });
-      } else {
-        _getCurrentLocation();
-        _initializeMarkers();
-      }
-    } else {
-      _getCurrentLocation();
-      _initializeMarkers();
-    }
+    _getCurrentLocation();
+    _initializeMarkers();
   }
 
   Future<void> _getCurrentLocation() async {
