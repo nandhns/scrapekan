@@ -54,8 +54,9 @@ class WasteLog {
   final String wasteType;
   final DateTime timestamp;
   final String imageUrl;
-  final String status;
+  final String? status;
   final String? verifiedBy;
+  final Map<String, dynamic>? data;
 
   WasteLog({
     required this.id,
@@ -65,21 +66,26 @@ class WasteLog {
     required this.wasteType,
     required this.timestamp,
     required this.imageUrl,
-    required this.status,
+    this.status,
     this.verifiedBy,
+    this.data,
   });
 
   Map<String, dynamic> toMap() {
-    return {
+    final map = {
       'userId': userId,
       'dropOffPointId': dropOffPointId,
       'weight': weight,
       'wasteType': wasteType,
       'timestamp': Timestamp.fromDate(timestamp),
       'imageUrl': imageUrl,
-      'status': status,
-      'verifiedBy': verifiedBy,
+      'status': status as String?,
+      'verifiedBy': verifiedBy as String?,
     };
+    
+    map.removeWhere((key, value) => value == null);
+    
+    return map;
   }
 }
 

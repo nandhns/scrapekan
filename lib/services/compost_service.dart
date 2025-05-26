@@ -1,8 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/firestore_schema.dart';
 import 'firebase_service.dart';
+import '../models/compost_models.dart';
 
 class CompostService extends FirebaseService {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
   // Create new compost batch
   Future<void> createCompostBatch(CompostBatch batch) async {
     final batchWrite = FirebaseFirestore.instance.batch();
@@ -157,5 +160,151 @@ class CompostService extends FirebaseService {
       'batchCount': batchCount,
       'averageEfficiency': batchCount > 0 ? (totalOutput / totalInput) * 100 : 0,
     };
+  }
+
+  // Citizen Functions
+  Future<void> addCompostEntry(CompostEntry entry) async {
+    await _firestore.collection('compost_entries').doc(entry.id).set(entry.toMap());
+    
+    // Update inventory
+    await _updateInventory(entry.compostCreated);
+  }
+
+  Future<void> _updateInventory(double newCompost) async {
+    final inventoryRef = _firestore.collection('inventory').doc('compost');
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(inventoryRef);
+      if (snapshot.exists) {
+        final currentInventory = CompostInventory.fromMap(snapshot.data()!);
+        final newTotal = currentInventory.totalAvailable + newCompost;
+        
+        transaction.update(inventoryRef, {
+          'totalAvailable': newTotal,
+          'lastUpdated': DateTime.now(),
+        });
+      } else {
+        transaction.set(inventoryRef, {
+          'totalAvailable': newCompost,
+          'reserved': 0.0,
+          'distributed': 0.0,
+          'lastUpdated': DateTime.now(),
+        });
+      }
+    });
+  }
+
+  // Farmer Functions
+  Future<void> submitFarmerRequest(FarmerRequest request) async {
+    await _firestore.collection('farmer_requests').doc(request.id).set(request.toMap());
+  }
+
+  Future<void> processFarmerRequest(String requestId, bool approved, {String? rejectionReason}) async {
+    final requestRef = _firestore.collection('farmer_requests').doc(requestId);
+    final inventoryRef = _firestore.collection('inventory').doc('compost');
+
+    await _firestore.runTransaction((transaction) async {
+      final requestDoc = await transaction.get(requestRef);
+      final inventoryDoc = await transaction.get(inventoryRef);
+
+      if (!requestDoc.exists || !inventoryDoc.exists) {
+        throw Exception('Request or inventory not found');
+      }
+
+      final request = FarmerRequest.fromMap(requestDoc.data()!);
+      final inventory = CompostInventory.fromMap(inventoryDoc.data()!);
+
+      if (approved) {
+        if (inventory.totalAvailable < request.requestedAmount) {
+          throw Exception('Insufficient compost available');
+        }
+
+        // Update request status
+        transaction.update(requestRef, {
+          'status': 'approved',
+        });
+
+        // Update inventory
+        transaction.update(inventoryRef, {
+          'totalAvailable': inventory.totalAvailable - request.requestedAmount,
+          'reserved': inventory.reserved + request.requestedAmount,
+          'lastUpdated': DateTime.now(),
+        });
+
+        // Create delivery entry
+        final deliveryRef = _firestore.collection('deliveries').doc();
+        final delivery = DeliveryManagement(
+          id: deliveryRef.id,
+          requestId: requestId,
+          farmerId: request.farmerId,
+          amount: request.requestedAmount,
+          status: 'pending',
+          scheduledDate: DateTime.now(),
+        );
+        transaction.set(deliveryRef, delivery.toMap());
+      } else {
+        transaction.update(requestRef, {
+          'status': 'rejected',
+          'rejectionReason': rejectionReason,
+        });
+      }
+    });
+  }
+
+  // Admin Functions
+  Stream<CompostInventory> getInventoryStream() {
+    return _firestore
+        .collection('inventory')
+        .doc('compost')
+        .snapshots()
+        .map((doc) => CompostInventory.fromMap(doc.data()!));
+  }
+
+  Stream<List<FarmerRequest>> getPendingRequestsStream() {
+    return _firestore
+        .collection('farmer_requests')
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .map((snapshot) => 
+            snapshot.docs.map((doc) => FarmerRequest.fromMap(doc.data())).toList());
+  }
+
+  Stream<List<DeliveryManagement>> getPendingDeliveriesStream() {
+    return _firestore
+        .collection('deliveries')
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .map((snapshot) => 
+            snapshot.docs.map((doc) => DeliveryManagement.fromMap(doc.data())).toList());
+  }
+
+  // Delivery Management
+  Future<void> updateDeliveryStatus(String deliveryId, String status) async {
+    final deliveryRef = _firestore.collection('deliveries').doc(deliveryId);
+    final inventoryRef = _firestore.collection('inventory').doc('compost');
+
+    await _firestore.runTransaction((transaction) async {
+      final deliveryDoc = await transaction.get(deliveryRef);
+      final inventoryDoc = await transaction.get(inventoryRef);
+
+      if (!deliveryDoc.exists || !inventoryDoc.exists) {
+        throw Exception('Delivery or inventory not found');
+      }
+
+      final delivery = DeliveryManagement.fromMap(deliveryDoc.data()!);
+      final inventory = CompostInventory.fromMap(inventoryDoc.data()!);
+
+      if (status == 'completed') {
+        transaction.update(inventoryRef, {
+          'reserved': inventory.reserved - delivery.amount,
+          'distributed': inventory.distributed + delivery.amount,
+          'lastUpdated': DateTime.now(),
+        });
+      }
+
+      transaction.update(deliveryRef, {
+        'status': status,
+        'completedDate': status == 'completed' ? DateTime.now() : null,
+      });
+    });
   }
 } 

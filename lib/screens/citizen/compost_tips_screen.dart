@@ -1,6 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../services/auth_service.dart';
 
-class CompostTipsScreen extends StatelessWidget {
+class CompostTipsScreen extends StatefulWidget {
+  const CompostTipsScreen({Key? key}) : super(key: key);
+
+  @override
+  State<CompostTipsScreen> createState() => _CompostTipsScreenState();
+}
+
+class _CompostTipsScreenState extends State<CompostTipsScreen> {
+  bool _isLoading = true;
+  
   final List<Map<String, dynamic>> _tips = [
     {
       'title': 'What to Compost',
@@ -50,21 +61,38 @@ class CompostTipsScreen extends StatelessWidget {
     {
       'title': 'Pahang Launches New Community Composting Initiative',
       'date': '15 March 2024',
-      'image': 'assets/images/community_composting.jpg',  // You'll need to add this image
       'summary': 'The state of Pahang has launched a new community composting initiative aimed at reducing organic waste in landfills. The program will establish composting centers in major townships, starting with Kuantan and Gambang.',
       'link': 'Read more about the initiative',
     },
     {
       'title': 'Local Schools Join Green Waste Management Program',
       'date': '10 March 2024',
-      'image': 'assets/images/school_composting.jpg',  // You'll need to add this image
       'summary': 'Five schools in the Kuantan district have joined a new program to implement composting practices in their facilities. The initiative aims to educate students about sustainable waste management while reducing the schools\' environmental impact.',
       'link': 'Learn about the school program',
     },
   ];
 
   @override
+  void initState() {
+    super.initState();
+    // Set loading to false after frame is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
     return SingleChildScrollView(
       padding: EdgeInsets.all(16.0),
       child: Column(
@@ -110,14 +138,17 @@ class CompostTipsScreen extends StatelessWidget {
             height: 200,
             width: double.infinity,
             decoration: BoxDecoration(
-              color: Colors.grey[300],
+              color: Colors.green[200],
               borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(4),
                 topRight: Radius.circular(4),
               ),
-              image: DecorationImage(
-                image: AssetImage(newsItem['image'] as String),
-                fit: BoxFit.cover,
+            ),
+            child: Center(
+              child: Icon(
+                Icons.eco,
+                size: 64,
+                color: Colors.green[800],
               ),
             ),
           ),
