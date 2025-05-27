@@ -1,10 +1,113 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/firestore_schema.dart';
 import 'firebase_service.dart';
 
 class NotificationService extends FirebaseService {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Create a new notification
+  Future<void> createNotification({
+    required String userId,
+    required String title,
+    required String message,
+    required String type,
+    Map<String, dynamic>? additionalData,
+  }) async {
+    try {
+      await _firestore.collection('notifications').add({
+        'userId': userId,
+        'title': title,
+        'message': message,
+        'type': type,
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
+        'additionalData': additionalData,
+      });
+    } catch (e) {
+      print('Error creating notification: $e');
+      throw e;
+    }
+  }
+
+  // Get notifications for current user
+  Stream<QuerySnapshot> getUserNotifications() {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return Stream.empty();
+
+    return _firestore
+        .collection('notifications')
+        .where('userId', isEqualTo: userId)
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+  }
+
+  // Mark a notification as read
+  Future<void> markAsRead(String notificationId) async {
+    try {
+      await _firestore
+          .collection('notifications')
+          .doc(notificationId)
+          .update({'isRead': true});
+    } catch (e) {
+      print('Error marking notification as read: $e');
+      throw e;
+    }
+  }
+
+  // Mark all notifications as read for current user
+  Future<void> markAllAsRead() async {
+    try {
+      final userId = _auth.currentUser?.uid;
+      if (userId == null) return;
+
+      final batch = _firestore.batch();
+      final unreadNotifications = await _firestore
+          .collection('notifications')
+          .where('userId', isEqualTo: userId)
+          .where('isRead', isEqualTo: false)
+          .get();
+
+      for (var doc in unreadNotifications.docs) {
+        batch.update(doc.reference, {'isRead': true});
+      }
+
+      await batch.commit();
+    } catch (e) {
+      print('Error marking all notifications as read: $e');
+      throw e;
+    }
+  }
+
+  // Delete a notification
+  Future<void> deleteNotification(String notificationId) async {
+    try {
+      await _firestore
+          .collection('notifications')
+          .doc(notificationId)
+          .delete();
+    } catch (e) {
+      print('Error deleting notification: $e');
+      throw e;
+    }
+  }
+
+  // Get unread notifications count
+  Stream<int> getUnreadCount() {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return Stream.value(0);
+
+    return _firestore
+        .collection('notifications')
+        .where('userId', isEqualTo: userId)
+        .where('isRead', isEqualTo: false)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.length);
+  }
+
   // Get user's notifications
-  Stream<List<NotificationModel>> getUserNotifications(String userId) {
+  Stream<List<NotificationModel>> getUserNotificationsStream(String userId) {
     return notificationsRef
         .where('recipientId', isEqualTo: userId)
         .where('read', isEqualTo: false)
@@ -46,42 +149,5 @@ class NotificationService extends FirebaseService {
                   data: doc['data'],
                 ))
             .toList());
-  }
-
-  // Mark notification as read
-  Future<void> markAsRead(String notificationId) async {
-    await notificationsRef.doc(notificationId).update({
-      'read': true,
-    });
-  }
-
-  // Mark all notifications as read
-  Future<void> markAllAsRead(String userId) async {
-    final batch = FirebaseFirestore.instance.batch();
-    
-    final notifications = await notificationsRef
-        .where('recipientId', isEqualTo: userId)
-        .where('read', isEqualTo: false)
-        .get();
-
-    for (var doc in notifications.docs) {
-      batch.update(doc.reference, {'read': true});
-    }
-
-    await batch.commit();
-  }
-
-  // Delete notification
-  Future<void> deleteNotification(String notificationId) async {
-    await notificationsRef.doc(notificationId).delete();
-  }
-
-  // Get unread count
-  Stream<int> getUnreadCount(String userId) {
-    return notificationsRef
-        .where('recipientId', isEqualTo: userId)
-        .where('read', isEqualTo: false)
-        .snapshots()
-        .map((snapshot) => snapshot.size);
   }
 } 

@@ -93,3 +93,6 @@ android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 lib/config/secrets.dart
 lib/config/api_keys.dart
+
+# API Keys
+lib/config/api_keys.dart

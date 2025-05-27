@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
-import '../../services/auth_service.dart';
+import '../../services/notification_service.dart';
 import '../../theme/app_theme.dart';
 
 class NotificationType {
@@ -25,8 +24,7 @@ class FarmerNotificationsScreen extends StatefulWidget {
 }
 
 class _FarmerNotificationsScreenState extends State<FarmerNotificationsScreen> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  late NotificationService _notificationService;
 
   final Map<String, _NotificationData> _notificationTypes = {
     NotificationType.requestApproved: _NotificationData(
@@ -42,6 +40,12 @@ class _FarmerNotificationsScreenState extends State<FarmerNotificationsScreen> {
       Colors.orange,
     ),
   };
+
+  @override
+  void initState() {
+    super.initState();
+    _notificationService = NotificationService();
+  }
 
   String _timeAgo(DateTime dateTime) {
     final now = DateTime.now();
@@ -60,55 +64,11 @@ class _FarmerNotificationsScreenState extends State<FarmerNotificationsScreen> {
     }
   }
 
-  Stream<QuerySnapshot> _getNotifications() {
-    final userId = _auth.currentUser?.uid;
-    if (userId == null) return Stream.empty();
-
-    return _firestore
-        .collection('notifications')
-        .where('userId', isEqualTo: userId)
-        .orderBy('createdAt', descending: true)
-        .snapshots();
-  }
-
-  Future<void> _markAsRead(String notificationId) async {
-    try {
-      await _firestore
-          .collection('notifications')
-          .doc(notificationId)
-          .update({'isRead': true});
-    } catch (e) {
-      print('Error marking notification as read: $e');
-    }
-  }
-
-  Future<void> _markAllAsRead() async {
-    try {
-      final userId = _auth.currentUser?.uid;
-      if (userId == null) return;
-
-      final batch = _firestore.batch();
-      final unreadNotifications = await _firestore
-          .collection('notifications')
-          .where('userId', isEqualTo: userId)
-          .where('isRead', isEqualTo: false)
-          .get();
-
-      for (var doc in unreadNotifications.docs) {
-        batch.update(doc.reference, {'isRead': true});
-      }
-
-      await batch.commit();
-    } catch (e) {
-      print('Error marking all notifications as read: $e');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: StreamBuilder<QuerySnapshot>(
-        stream: _getNotifications(),
+        stream: _notificationService.getUserNotifications(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(
@@ -162,7 +122,7 @@ class _FarmerNotificationsScreenState extends State<FarmerNotificationsScreen> {
                       ),
                     ),
                     TextButton(
-                      onPressed: _markAllAsRead,
+                      onPressed: () => _notificationService.markAllAsRead(),
                       child: Text(
                         'Mark all as read',
                         style: TextStyle(
@@ -209,7 +169,7 @@ class _FarmerNotificationsScreenState extends State<FarmerNotificationsScreen> {
                       final data = notification.data() as Map<String, dynamic>;
                       
                       if (!data['isRead']) {
-                        _markAsRead(notification.id);
+                        _notificationService.markAsRead(notification.id);
                       }
 
                       final type = data['type'] as String? ?? NotificationType.requestApproved;
@@ -254,63 +214,60 @@ class _NotificationItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          margin: EdgeInsets.only(right: 12),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: iconColor.withOpacity(0.1),
-          ),
-          child: Icon(
-            icon,
-            color: iconColor,
-            size: 24,
-          ),
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isRead ? Colors.white : Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.grey.shade200,
         ),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: isRead ? Colors.grey[600] : Colors.black,
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                message,
-                style: TextStyle(
-                  color: Colors.grey[600],
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                time,
-                style: TextStyle(
-                  color: Colors.grey[500],
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (!isRead)
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Container(
-            width: 8,
-            height: 8,
+            padding: EdgeInsets.all(12),
             decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.1),
               shape: BoxShape.circle,
-              color: AppTheme.buttonColor,
+            ),
+            child: Icon(
+              icon,
+              color: iconColor,
+              size: 24,
             ),
           ),
-      ],
+          SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  message,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.grey[600],
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  time,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.grey[500],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 } 

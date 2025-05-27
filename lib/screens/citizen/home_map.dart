@@ -25,48 +25,7 @@ class _HomeMapState extends State<HomeMap> {
   // Center of Kuantan as default location
   static const LatLng _defaultLocation = LatLng(3.8168, 103.3317);
 
-  final List<DropoffPoint> _dropoffPoints = [
-    DropoffPoint(
-      id: 'loc1',
-      name: 'Pasar Tani Kekal Pekan',
-      address: 'Jalan Sultan Abdullah, 26600 Pekan, Pahang',
-      latLng: LatLng(3.4925, 103.3889),
-      openingHours: '7:00 AM - 2:00 PM',
-      isOpen: true,
-      type: 'Market',
-      capacity: '80%',
-    ),
-    DropoffPoint(
-      id: 'loc2',
-      name: 'Pasar Tani Kekal Gambang',
-      address: 'Jalan Gambang Perdana 1, 26300 Gambang, Pahang',
-      latLng: LatLng(3.7089, 103.1198),
-      openingHours: '8:00 AM - 6:00 PM',
-      isOpen: true,
-      type: 'Market',
-      capacity: '60%',
-    ),
-    DropoffPoint(
-      id: 'loc3',
-      name: 'Taman Tas Collection Center',
-      address: 'Taman Tas, 25150 Kuantan, Pahang',
-      latLng: LatLng(3.8168, 103.3317),
-      openingHours: '24 hours',
-      isOpen: true,
-      type: 'Collection Center',
-      capacity: '45%',
-    ),
-    DropoffPoint(
-      id: 'loc4',
-      name: 'Bandar Putra Collection Point',
-      address: 'Bandar Putra, 26600 Pekan, Pahang',
-      latLng: LatLng(3.4837, 103.3757),
-      openingHours: '9:00 AM - 5:00 PM',
-      isOpen: false,
-      type: 'Collection Point',
-      capacity: '90%',
-    ),
-  ];
+  List<DropoffPoint> _dropoffPoints = [];
 
   final CameraPosition _initialPosition = CameraPosition(
     target: _defaultLocation,
@@ -77,7 +36,53 @@ class _HomeMapState extends State<HomeMap> {
   void initState() {
     super.initState();
     _getCurrentLocation();
-    _initializeMarkers();
+    _loadDropoffPoints();
+  }
+
+  Future<void> _loadDropoffPoints() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('dropoff_points')
+          .get();
+
+      final points = snapshot.docs.map((doc) {
+        final data = doc.data();
+        // Handle both GeoPoint and map with latitude/longitude
+        LatLng locationLatLng;
+        if (data['location'] is GeoPoint) {
+          final geoPoint = data['location'] as GeoPoint;
+          locationLatLng = LatLng(geoPoint.latitude, geoPoint.longitude);
+        } else if (data['latitude'] != null && data['longitude'] != null) {
+          locationLatLng = LatLng(
+            (data['latitude'] as num).toDouble(),
+            (data['longitude'] as num).toDouble(),
+          );
+        } else {
+          // Default to Kuantan center if no location found
+          locationLatLng = LatLng(3.8168, 103.3317);
+        }
+
+        return DropoffPoint(
+          id: doc.id,
+          name: data['name'] ?? '',
+          address: data['address'] ?? '',
+          latLng: locationLatLng,
+          openingHours: data['operatingHours'] ?? '',
+          isOpen: data['isOpen'] ?? false,
+          type: data['type'] ?? 'Collection Point',
+          capacity: '${((data['currentCapacity'] ?? 0) / (data['maxCapacity'] ?? 1000) * 100).toStringAsFixed(0)}%',
+        );
+      }).toList();
+
+      setState(() {
+        _dropoffPoints = points;
+        _initializeMarkers();
+      });
+    } catch (e) {
+      setState(() {
+        _error = 'Error loading drop-off points: $e';
+      });
+    }
   }
 
   Future<void> _getCurrentLocation() async {

@@ -54,6 +54,7 @@ Future<void> main() async {
   } catch (e) {
     print('Error initializing Firebase: $e');
     runApp(MaterialApp(
+      debugShowCheckedModeBanner: false,
       home: Scaffold(
         body: Center(
           child: Text('Error initializing app: $e'),
@@ -68,6 +69,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ScraPekan',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primaryColor: Color(0xFFEFBF04),
         scaffoldBackgroundColor: Colors.white,

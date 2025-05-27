@@ -31,12 +31,30 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
     {'value': 'other', 'label': 'Other Organic Waste'},
   ];
 
-  final List<Map<String, String>> _dropOffLocations = [
-    {'value': 'loc1', 'label': 'Pasar Tani Kekal Pekan'},
-    {'value': 'loc2', 'label': 'Pasar Tani Kekal Gambang'},
-    {'value': 'loc3', 'label': 'Taman Tas Collection Center'},
-    {'value': 'loc4', 'label': 'Bandar Putra Collection Point'},
-  ];
+  List<Map<String, String>> _dropOffLocations = [];
+
+  Future<void> _loadDropOffLocations() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('dropoff_points')
+          .get();
+
+      setState(() {
+        _dropOffLocations = snapshot.docs.map((doc) {
+          final data = doc.data();
+          return {
+            'value': doc.id,
+            'label': data['name']?.toString() ?? 'Unknown Location',
+          };
+        }).toList();
+      });
+    } catch (e) {
+      print('Error loading drop-off locations: $e'); // Add debug print
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading drop-off locations: ${e.toString()}')),
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -46,6 +64,7 @@ class _LogWasteScreenState extends State<LogWasteScreen> {
       torchEnabled: false,
       formats: [BarcodeFormat.qrCode],
     );
+    _loadDropOffLocations();
   }
 
   @override
